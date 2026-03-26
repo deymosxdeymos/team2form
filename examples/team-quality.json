@@ -1,0 +1,30 @@
+{
+  "taskSkills": [
+    { "id": "s1", "level": 1.0, "importance": 1 },
+    { "id": "s2", "level": 1.0, "importance": 1 }
+  ],
+  "team": [
+    {
+      "id": "a",
+      "gender": "MALE",
+      "personality": { "ei": 0, "sn": 0, "tf": 0, "pj": 0 },
+      "skills": [{ "id": "s1", "level": 1.0 }],
+      "preferences": [
+        { "personId": "a", "preference": 1.0 },
+        { "personId": "b", "preference": 0.5 }
+      ],
+      "taskPreference": 1.0
+    },
+    {
+      "id": "b",
+      "gender": "FEMALE",
+      "personality": { "ei": 0, "sn": 0, "tf": 0, "pj": 0 },
+      "skills": [{ "id": "s2", "level": 1.0 }],
+      "preferences": [
+        { "personId": "a", "preference": 0.5 },
+        { "personId": "b", "preference": 1.0 }
+      ],
+      "taskPreference": 1.0
+    }
+  ]
+}

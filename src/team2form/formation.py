@@ -1,0 +1,1045 @@
+from __future__ import annotations
+
+import heapq
+import itertools
+import math
+import random
+from collections.abc import Callable, Iterable, Iterator
+from dataclasses import dataclass
+from functools import cache
+from typing import overload
+
+from .models import FormationRequest, Person, TeamResult, TeamsResponse
+from .modes import Mode, WeightPreset
+from .scoring import (
+    assigned_people_from_assignments,
+    build_team_quality_request,
+    calculate_team_quality,
+    coverage_for_person_and_task_skill,
+    preference_lookup,
+    similarity_lookup,
+    team_personality_score,
+    team_social_score,
+)
+from .weights import resolve_weights
+
+
+@dataclass(slots=True)
+class ScoredAllocation:
+    task_id: str
+    people: tuple[Person, ...]
+    quality: float
+    assignments: dict[str, list[str]]
+
+
+class TeamFormationError(ValueError):
+    pass
+
+
+DEFAULT_MAX_CANDIDATE_TEAMS = 10_000
+MAX_SCORED_COMBINATION_EXPANSION = 4
+OBJECTIVE_REL_TOL = 1e-12
+OBJECTIVE_ABS_TOL = 1e-15
+
+
+def validate_max_candidate_teams(max_candidate_teams: int | None) -> None:
+    if max_candidate_teams is not None and max_candidate_teams <= 0:
+        raise TeamFormationError('max_candidate_teams must be a positive integer.')
+
+
+def capped_candidate_search_is_exact(
+    request: FormationRequest,
+    *,
+    max_candidate_teams: int | None,
+) -> bool:
+    if max_candidate_teams is None:
+        return True
+    remaining_people = len(request.people)
+    allocation_count = 1
+    for task in request.tasks:
+        task_candidate_count = math.comb(remaining_people, task.team_size)
+        if task_candidate_count > max_candidate_teams:
+            return False
+        if allocation_count > max_candidate_teams // task_candidate_count:
+            return False
+        allocation_count *= task_candidate_count
+        remaining_people -= task.team_size
+    return True
+
+
+def task_hardness(task_id: str, request: FormationRequest, *, mode: Mode) -> float:
+    task = next(task for task in request.tasks if task.id == task_id)
+    similarity_index = similarity_lookup(request.similarities)
+    hardness = float(task.team_size)
+    for task_skill in task.skills:
+        best_coverage = max(
+            (
+                coverage_for_person_and_task_skill(
+                    person,
+                    task_skill,
+                    mode=mode,
+                    similarity_index=similarity_index,
+                )
+                for person in request.people
+            ),
+            default=0.0,
+        )
+        hardness += task_skill.level * (1.0 - best_coverage)
+    return hardness
+
+
+def individual_fit(
+    person: Person,
+    request: FormationRequest,
+    task_id: str,
+    *,
+    mode: Mode,
+    preset: WeightPreset | None,
+    normalize_weights: bool,
+) -> tuple[float, float, float]:
+    task = next(task for task in request.tasks if task.id == task_id)
+    similarity_index = similarity_lookup(request.similarities)
+    valid_person_ids = {candidate.id for candidate in request.people}
+    task_preferences = preference_lookup(
+        task.preferences,
+        valid_person_ids=valid_person_ids,
+    )
+    weights = resolve_weights(
+        alpha=request.alpha,
+        beta=request.beta,
+        gamma=request.gamma,
+        delta=request.delta,
+        mode=mode,
+        preset=preset,
+        normalize=normalize_weights,
+    )
+    skills_per_person = max(1, math.ceil(len(task.skills) / task.team_size))
+
+    weighted_coverages = [
+        (
+            coverage_for_person_and_task_skill(
+                person,
+                task_skill,
+                mode=mode,
+                similarity_index=similarity_index,
+            ),
+            task_skill.importance,
+        )
+        for task_skill in task.skills
+    ]
+    # Candidate pruning needs to preserve specialists for the most important
+    # skills, not just the skills with the highest raw coverage.
+    best_coverages = sorted(
+        weighted_coverages,
+        key=lambda item: (item[0] * item[1], item[1], item[0]),
+        reverse=True,
+    )[:skills_per_person]
+    total_importance = sum(task_skill.importance for task_skill in task.skills)
+    skill_fit = (
+        sum(coverage * importance for coverage, importance in best_coverages)
+        / total_importance
+        if total_importance > 0
+        else 0.0
+    )
+    task_preference_default = 0.5
+    if mode == Mode.COMPAT:
+        task_preference_default = 0.0 if not task_preferences else 0.5
+    task_preference = task_preferences.get(person.id, task_preference_default)
+
+    weighted_fit = weights.alpha * skill_fit + weights.gamma * task_preference
+    return (weighted_fit, skill_fit, task_preference)
+
+
+def has_explicit_social_preferences(
+    member: Person,
+    teammate_ids: set[str],
+) -> bool:
+    if not member.preferences:
+        return False
+    return any(
+        preference.person_id in teammate_ids and preference.person_id != member.id
+        for preference in member.preferences
+    )
+
+
+def candidate_social_potential(
+    person: Person,
+    people: list[Person],
+    *,
+    team_size: int,
+    mode: Mode,
+) -> float:
+    if team_size <= 1:
+        return 0.0
+
+    pair_scores = []
+    for teammate in people:
+        if teammate.id == person.id:
+            continue
+        if mode == Mode.COMPAT and not (
+            has_explicit_social_preferences(person, {teammate.id})
+            or has_explicit_social_preferences(teammate, {person.id})
+        ):
+            pair_scores.append(0.0)
+            continue
+        pair_scores.append(team_social_score((person, teammate), compat_default=0.5))
+
+    partner_count = min(team_size - 1, len(pair_scores))
+    if partner_count <= 0:
+        return 0.0
+    return sum(sorted(pair_scores, reverse=True)[:partner_count]) / partner_count
+
+
+def candidate_personality_potential(
+    person: Person,
+    people: list[Person],
+    *,
+    team_size: int,
+    mode: Mode,
+) -> float:
+    if team_size <= 1:
+        return 0.0
+
+    pair_scores = [
+        team_personality_score((person, teammate), mode=mode)
+        for teammate in people
+        if teammate.id != person.id
+    ]
+    partner_count = min(team_size - 1, len(pair_scores))
+    if partner_count <= 0:
+        return 0.0
+    return sum(sorted(pair_scores, reverse=True)[:partner_count]) / partner_count
+
+
+def shortlist_scorers(
+    request: FormationRequest,
+    *,
+    people: list[Person],
+    task_id: str,
+    team_size: int,
+    mode: Mode,
+    preset: WeightPreset | None,
+    normalize_weights: bool,
+) -> tuple[
+    Callable[[Person], tuple[float, float, float, float, float]],
+    list[Callable[[Person], float]],
+]:
+    weights = resolve_weights(
+        alpha=request.alpha,
+        beta=request.beta,
+        gamma=request.gamma,
+        delta=request.delta,
+        mode=mode,
+        preset=preset,
+        normalize=normalize_weights,
+    )
+    social_potentials: dict[str, float] = {}
+    personality_potentials: dict[str, float] = {}
+
+    def social_potential(person: Person) -> float:
+        if weights.delta <= 0:
+            return 0.0
+        if person.id not in social_potentials:
+            social_potentials[person.id] = candidate_social_potential(
+                person,
+                people,
+                team_size=team_size,
+                mode=mode,
+            )
+        return social_potentials[person.id]
+
+    def personality_potential(person: Person) -> float:
+        if weights.beta <= 0:
+            return 0.0
+        if person.id not in personality_potentials:
+            personality_potentials[person.id] = candidate_personality_potential(
+                person,
+                people,
+                team_size=team_size,
+                mode=mode,
+            )
+        return personality_potentials[person.id]
+
+    def scorer(person: Person) -> tuple[float, float, float, float, float]:
+        weighted_fit, skill_fit, task_preference = individual_fit(
+            person,
+            request,
+            task_id,
+            mode=mode,
+            preset=preset,
+            normalize_weights=normalize_weights,
+        )
+        personality = personality_potential(person)
+        social = social_potential(person)
+        return (
+            weighted_fit + weights.beta * personality + weights.delta * social,
+            skill_fit,
+            task_preference,
+            personality,
+            social,
+        )
+
+    alternate_scorers: list[Callable[[Person], float]] = []
+    if weights.beta > 0:
+        alternate_scorers.append(personality_potential)
+    if weights.delta > 0:
+        alternate_scorers.append(social_potential)
+
+    return scorer, alternate_scorers
+
+
+@overload
+def candidate_combinations(
+    *,
+    people: list[Person],
+    team_size: int,
+    max_candidate_teams: None,
+    shortlist_padding: int,
+    scorer,
+    alternate_scorers: list[Callable[[Person], float]] | None = None,
+    combination_scorer: Callable[[tuple[Person, ...]], float] | None = None,
+) -> Iterator[tuple[Person, ...]]: ...
+
+
+@overload
+def candidate_combinations(
+    *,
+    people: list[Person],
+    team_size: int,
+    max_candidate_teams: int,
+    shortlist_padding: int,
+    scorer,
+    alternate_scorers: list[Callable[[Person], float]] | None = None,
+    combination_scorer: Callable[[tuple[Person, ...]], float] | None = None,
+) -> list[tuple[Person, ...]]: ...
+
+
+def candidate_combinations(
+    *,
+    people: list[Person],
+    team_size: int,
+    max_candidate_teams: int | None,
+    shortlist_padding: int,
+    scorer,
+    alternate_scorers: list[Callable[[Person], float]] | None = None,
+    combination_scorer: Callable[[tuple[Person, ...]], float] | None = None,
+) -> Iterable[tuple[Person, ...]]:
+    validate_max_candidate_teams(max_candidate_teams)
+    total = math.comb(len(people), team_size)
+    if max_candidate_teams is None:
+        return itertools.combinations(people, team_size)
+    if total <= max_candidate_teams:
+        return list(itertools.combinations(people, team_size))
+
+    minimum_shortlist_size = team_size
+    while math.comb(minimum_shortlist_size, team_size) < max_candidate_teams:
+        minimum_shortlist_size += 1
+
+    target_size = min(
+        len(people),
+        max(
+            team_size + shortlist_padding,
+            team_size * 2,
+            minimum_shortlist_size,
+        ),
+    )
+    shortlist_size = target_size
+    if combination_scorer is None:
+        shortlist_size = team_size
+        while shortlist_size < target_size:
+            if math.comb(shortlist_size, team_size) >= max_candidate_teams:
+                break
+            shortlist_size += 1
+    else:
+        scored_combination_budget = (
+            max_candidate_teams * MAX_SCORED_COMBINATION_EXPANSION
+        )
+        shortlist_size = team_size
+        while (
+            shortlist_size < target_size
+            and math.comb(
+                shortlist_size + 1,
+                team_size,
+            )
+            <= scored_combination_budget
+        ):
+            shortlist_size += 1
+
+    shortlist = []
+    seen_ids: set[str] = set()
+    ranked_lists = [sorted(people, key=scorer, reverse=True)]
+    if alternate_scorers:
+        ranked_lists.extend(
+            sorted(people, key=alternate_scorer, reverse=True)
+            for alternate_scorer in alternate_scorers
+        )
+
+    positions = [0] * len(ranked_lists)
+    while len(shortlist) < shortlist_size:
+        added = False
+        for ranking_index, ranking in enumerate(ranked_lists):
+            while positions[ranking_index] < len(ranking):
+                person = ranking[positions[ranking_index]]
+                positions[ranking_index] += 1
+                if person.id in seen_ids:
+                    continue
+                seen_ids.add(person.id)
+                shortlist.append(person)
+                added = True
+                break
+            if len(shortlist) >= shortlist_size:
+                break
+        if not added:
+            break
+
+    input_positions = {person.id: index for index, person in enumerate(people)}
+    shortlist.sort(key=lambda person: input_positions[person.id])
+
+    if combination_scorer is None:
+        combinations = list(itertools.combinations(shortlist, team_size))
+        return combinations[:max_candidate_teams]
+
+    ranked: list[tuple[float, int, tuple[Person, ...]]] = []
+    for index, combination in enumerate(itertools.combinations(shortlist, team_size)):
+        entry = (combination_scorer(combination), -index, combination)
+        if len(ranked) < max_candidate_teams:
+            heapq.heappush(ranked, entry)
+            continue
+        if entry > ranked[0]:
+            heapq.heapreplace(ranked, entry)
+
+    ranked.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    return [combination for _, _, combination in ranked]
+
+
+def allocation_objective(
+    allocations: list[ScoredAllocation],
+) -> tuple[float, float, float]:
+    qualities = [allocation.quality for allocation in allocations]
+    if not qualities:
+        return (0.0, 0.0, 0.0)
+    product = 1.0
+    for quality in qualities:
+        product *= max(quality, 1e-12)
+    return (product, min(qualities), sum(qualities))
+
+
+def _objective_component_close(left: float, right: float) -> bool:
+    return math.isclose(
+        left,
+        right,
+        rel_tol=OBJECTIVE_REL_TOL,
+        abs_tol=OBJECTIVE_ABS_TOL,
+    )
+
+
+def _objective_component_less(left: float, right: float) -> bool:
+    return left < right and not _objective_component_close(left, right)
+
+
+def _objective_component_greater(left: float, right: float) -> bool:
+    return left > right and not _objective_component_close(left, right)
+
+
+def _objective_better(
+    left: tuple[float, float, float],
+    right: tuple[float, float, float],
+) -> bool:
+    for left_value, right_value in zip(left, right, strict=True):
+        if _objective_component_greater(left_value, right_value):
+            return True
+        if _objective_component_less(left_value, right_value):
+            return False
+    return False
+
+
+def _objective_dominates(
+    left: tuple[float, float, float],
+    right: tuple[float, float, float],
+) -> bool:
+    comparisons = zip(left[1:], right[1:], strict=True)
+    if not all(
+        left_value > right_value
+        or _objective_component_close(left_value, right_value)
+        for left_value, right_value in comparisons
+    ):
+        return False
+    return any(
+        _objective_component_greater(left_value, right_value)
+        for left_value, right_value in zip(left[1:], right[1:], strict=True)
+    )
+
+
+def score_team(
+    request: FormationRequest,
+    *,
+    task_id: str,
+    people: tuple[Person, ...],
+    mode: Mode,
+    preset: WeightPreset | None,
+    normalize_weights: bool,
+) -> ScoredAllocation:
+    task = next(task for task in request.tasks if task.id == task_id)
+    compat_task_preference_default = None
+    compat_social_preference_default = None
+    compat_zero_social_without_preferences = False
+    if mode == Mode.COMPAT:
+        teammate_ids = {member.id for member in people}
+        valid_person_ids = {candidate.id for candidate in request.people}
+        valid_task_preferences = preference_lookup(
+            task.preferences,
+            valid_person_ids=valid_person_ids,
+        )
+        has_team_social_preferences = any(
+            has_explicit_social_preferences(member, teammate_ids) for member in people
+        )
+        compat_task_preference_default = 0.0 if not valid_task_preferences else 0.5
+        compat_social_preference_default = (
+            0.0 if not has_team_social_preferences else 0.5
+        )
+        compat_zero_social_without_preferences = not has_team_social_preferences
+
+    breakdown = calculate_team_quality(
+        build_team_quality_request(
+            task=task,
+            team=list(people),
+            all_tasks=request.tasks,
+            alpha=request.alpha,
+            beta=request.beta,
+            gamma=request.gamma,
+            delta=request.delta,
+            similarities=request.similarities,
+            mode=mode,
+            compat_task_preference_default=compat_task_preference_default,
+        ),
+        mode=mode,
+        preset=preset,
+        normalize_weights=normalize_weights,
+        compat_task_preference_default=compat_task_preference_default,
+        compat_social_preference_default=compat_social_preference_default,
+        compat_zero_social_without_preferences=compat_zero_social_without_preferences,
+    )
+    return ScoredAllocation(
+        task_id=task_id,
+        people=people,
+        quality=breakdown.quality,
+        assignments=breakdown.assignments,
+    )
+
+
+def build_scored_candidates(
+    request: FormationRequest,
+    *,
+    task_order,
+    mode: Mode,
+    preset: WeightPreset | None,
+    normalize_weights: bool,
+    max_candidate_teams: int | None,
+    shortlist_padding: int,
+    randomizer: random.Random,
+) -> list[list[tuple[int, ScoredAllocation]]]:
+    person_index = {person.id: index for index, person in enumerate(request.people)}
+    task_candidates: list[list[tuple[int, ScoredAllocation]]] = []
+
+    for task in task_order:
+        member_scorer, alternate_scorers = shortlist_scorers(
+            request,
+            people=request.people,
+            task_id=task.id,
+            team_size=task.team_size,
+            mode=mode,
+            preset=preset,
+            normalize_weights=normalize_weights,
+        )
+        scored_allocations: dict[tuple[str, ...], ScoredAllocation] = {}
+
+        def scored_candidate(
+            candidate: tuple[Person, ...],
+            *,
+            task_id: str = task.id,
+            scored_allocations: dict[
+                tuple[str, ...], ScoredAllocation
+            ] = scored_allocations,
+        ) -> ScoredAllocation:
+            candidate_key = tuple(person.id for person in candidate)
+            if candidate_key not in scored_allocations:
+                scored_allocations[candidate_key] = score_team(
+                    request,
+                    task_id=task_id,
+                    people=candidate,
+                    mode=mode,
+                    preset=preset,
+                    normalize_weights=normalize_weights,
+                )
+            return scored_allocations[candidate_key]
+
+        candidates = candidate_combinations(
+            people=request.people,
+            team_size=task.team_size,
+            max_candidate_teams=max_candidate_teams,
+            shortlist_padding=shortlist_padding,
+            scorer=member_scorer,
+            alternate_scorers=alternate_scorers,
+            combination_scorer=lambda candidate: scored_candidate(candidate).quality,
+        )
+        if request.init_random:
+            candidates = list(candidates)
+            randomizer.shuffle(candidates)
+
+        scored = []
+        for candidate in candidates:
+            mask = 0
+            for person in candidate:
+                mask |= 1 << person_index[person.id]
+            scored.append(
+                (
+                    mask,
+                    scored_candidate(candidate),
+                )
+            )
+        task_candidates.append(scored)
+
+    return task_candidates
+
+
+def greedy_allocations(
+    request: FormationRequest,
+    *,
+    task_order,
+    mode: Mode,
+    preset: WeightPreset | None,
+    normalize_weights: bool,
+    max_candidate_teams: int | None,
+    shortlist_padding: int,
+    randomizer: random.Random,
+) -> tuple[list[ScoredAllocation], list[Person]]:
+    remaining_people = list(request.people)
+    allocations: list[ScoredAllocation] = []
+
+    for task in task_order:
+        task_id = task.id
+        member_scorer, alternate_scorers = shortlist_scorers(
+            request,
+            people=remaining_people,
+            task_id=task_id,
+            team_size=task.team_size,
+            mode=mode,
+            preset=preset,
+            normalize_weights=normalize_weights,
+        )
+        scored_allocations: dict[tuple[str, ...], ScoredAllocation] = {}
+
+        def scored_candidate(
+            candidate: tuple[Person, ...],
+            *,
+            task_id: str = task_id,
+            scored_allocations: dict[
+                tuple[str, ...], ScoredAllocation
+            ] = scored_allocations,
+        ) -> ScoredAllocation:
+            candidate_key = tuple(person.id for person in candidate)
+            if candidate_key not in scored_allocations:
+                scored_allocations[candidate_key] = score_team(
+                    request,
+                    task_id=task_id,
+                    people=candidate,
+                    mode=mode,
+                    preset=preset,
+                    normalize_weights=normalize_weights,
+                )
+            return scored_allocations[candidate_key]
+
+        candidates = candidate_combinations(
+            people=remaining_people,
+            team_size=task.team_size,
+            max_candidate_teams=max_candidate_teams,
+            shortlist_padding=shortlist_padding,
+            scorer=member_scorer,
+            alternate_scorers=alternate_scorers,
+            combination_scorer=lambda candidate: scored_candidate(candidate).quality,
+        )
+        if request.init_random:
+            candidates = list(candidates)
+            randomizer.shuffle(candidates)
+
+        scored_candidates = [scored_candidate(candidate) for candidate in candidates]
+        if request.init_random:
+            best = max(scored_candidates, key=lambda candidate: candidate.quality)
+        else:
+            best = max(
+                scored_candidates,
+                key=lambda candidate: (
+                    candidate.quality,
+                    tuple(sorted(member.id for member in candidate.people)),
+                ),
+            )
+        allocations.append(best)
+        chosen_ids = {member.id for member in best.people}
+        remaining_people = [
+            person for person in remaining_people if person.id not in chosen_ids
+        ]
+
+    return allocations, remaining_people
+
+
+def exact_allocations(
+    request: FormationRequest,
+    *,
+    task_order,
+    mode: Mode,
+    preset: WeightPreset | None,
+    normalize_weights: bool,
+    max_candidate_teams: int | None,
+    shortlist_padding: int,
+    randomizer: random.Random,
+) -> tuple[list[ScoredAllocation], list[Person]] | None:
+    task_candidates = [
+        list(candidates)
+        for candidates in build_scored_candidates(
+            request,
+            task_order=task_order,
+            mode=mode,
+            preset=preset,
+            normalize_weights=normalize_weights,
+            max_candidate_teams=max_candidate_teams,
+            shortlist_padding=shortlist_padding,
+            randomizer=randomizer,
+        )
+    ]
+    seats_needed = [0] * (len(task_order) + 1)
+    for index in range(len(task_order) - 1, -1, -1):
+        seats_needed[index] = seats_needed[index + 1] + task_order[index].team_size
+
+    full_mask = (1 << len(request.people)) - 1
+    ranked_candidate_indices: list[tuple[int, ...]] = []
+    person_candidate_positions: list[tuple[int, ...]] = []
+    all_candidate_positions: list[int] = []
+    best_quality_suffix = [1.0] * (len(task_order) + 1)
+
+    for task_index in range(len(task_order) - 1, -1, -1):
+        best_quality = max(
+            (candidate.quality for _, candidate in task_candidates[task_index]),
+            default=0.0,
+        )
+        best_quality_suffix[task_index] = (
+            best_quality_suffix[task_index + 1] * best_quality
+        )
+
+    for candidates in task_candidates:
+        ranked_indices = tuple(
+            sorted(
+                range(len(candidates)),
+                key=lambda candidate_index: (
+                    -candidates[candidate_index][1].quality,
+                    candidate_index,
+                ),
+            )
+        )
+        ranked_candidate_indices.append(ranked_indices)
+        all_candidate_positions.append((1 << len(ranked_indices)) - 1)
+
+        positions_by_person = [0] * len(request.people)
+        for rank_position, candidate_index in enumerate(ranked_indices):
+            candidate_mask, _ = candidates[candidate_index]
+            position_mask = 1 << rank_position
+            mask = candidate_mask
+            while mask:
+                person_bit = mask & -mask
+                positions_by_person[person_bit.bit_length() - 1] |= position_mask
+                mask ^= person_bit
+        person_candidate_positions.append(tuple(positions_by_person))
+
+    @dataclass(frozen=True, slots=True)
+    class SuffixSolution:
+        objective: tuple[float, float, float]
+        indices: tuple[int, ...]
+
+    @cache
+    def compatible_candidate_positions(task_index: int, remaining_mask: int) -> int:
+        invalid_positions = 0
+        excluded_mask = full_mask ^ remaining_mask
+        while excluded_mask:
+            person_bit = excluded_mask & -excluded_mask
+            invalid_positions |= person_candidate_positions[task_index][
+                person_bit.bit_length() - 1
+            ]
+            excluded_mask ^= person_bit
+        return all_candidate_positions[task_index] & ~invalid_positions
+
+    @cache
+    def solve(task_index: int, remaining_mask: int) -> tuple[SuffixSolution, ...]:
+        if remaining_mask.bit_count() < seats_needed[task_index]:
+            return ()
+        if task_index == len(task_order):
+            return (SuffixSolution((1.0, float('inf'), 0.0), ()),)
+
+        candidate_positions = compatible_candidate_positions(task_index, remaining_mask)
+        if candidate_positions == 0:
+            return ()
+
+        if task_index == len(task_order) - 1:
+            best_position = candidate_positions & -candidate_positions
+            rank_position = best_position.bit_length() - 1
+            candidate_index = ranked_candidate_indices[task_index][rank_position]
+            _, candidate = task_candidates[task_index][candidate_index]
+            return (
+                SuffixSolution(
+                    (candidate.quality, candidate.quality, candidate.quality),
+                    (candidate_index,),
+                ),
+            )
+
+        best_product: float | None = None
+        frontier: list[SuffixSolution] = []
+        remaining_quality_upper = best_quality_suffix[task_index + 1]
+        while candidate_positions:
+            best_position = candidate_positions & -candidate_positions
+            candidate_positions ^= best_position
+            rank_position = best_position.bit_length() - 1
+            candidate_index = ranked_candidate_indices[task_index][rank_position]
+            candidate_mask, candidate = task_candidates[task_index][candidate_index]
+
+            if (
+                best_product is not None
+                and _objective_component_less(
+                    candidate.quality * remaining_quality_upper,
+                    best_product,
+                )
+            ):
+                break
+
+            for rest in solve(task_index + 1, remaining_mask ^ candidate_mask):
+                objective = (
+                    candidate.quality * rest.objective[0],
+                    min(candidate.quality, rest.objective[1]),
+                    candidate.quality + rest.objective[2],
+                )
+                solution = SuffixSolution(objective, (candidate_index, *rest.indices))
+                if best_product is None or _objective_component_greater(
+                    objective[0],
+                    best_product,
+                ):
+                    best_product = objective[0]
+                    frontier = [solution]
+                    continue
+                if _objective_component_less(objective[0], best_product):
+                    continue
+                if any(
+                    _objective_component_close(existing.objective[1], objective[1])
+                    and _objective_component_close(
+                        existing.objective[2],
+                        objective[2],
+                    )
+                    for existing in frontier
+                ):
+                    continue
+                frontier = [
+                    existing
+                    for existing in frontier
+                    if not _objective_dominates(objective, existing.objective)
+                ]
+                if any(
+                    _objective_dominates(existing.objective, objective)
+                    for existing in frontier
+                ):
+                    continue
+                frontier.append(solution)
+
+        return tuple(frontier)
+
+    solutions = solve(0, full_mask)
+    if not solutions:
+        return None
+    solution = solutions[0]
+    for candidate in solutions[1:]:
+        if _objective_better(candidate.objective, solution.objective):
+            solution = candidate
+
+    chosen_indices = solution.indices
+    allocations = [
+        task_candidates[task_index][candidate_index][1]
+        for task_index, candidate_index in enumerate(chosen_indices)
+    ]
+    used_mask = 0
+    for task_index, candidate_index in enumerate(chosen_indices):
+        used_mask |= task_candidates[task_index][candidate_index][0]
+    unused_people = [
+        person
+        for index, person in enumerate(request.people)
+        if not ((used_mask >> index) & 1)
+    ]
+    return allocations, unused_people
+
+
+def improve_allocations(
+    request: FormationRequest,
+    *,
+    allocations: list[ScoredAllocation],
+    unused_people: list[Person],
+    mode: Mode,
+    preset: WeightPreset | None,
+    normalize_weights: bool,
+    swap_rounds: int,
+) -> list[ScoredAllocation]:
+    improved = True
+    rounds = 0
+    while improved and rounds < swap_rounds:
+        improved = False
+        rounds += 1
+        current_objective = allocation_objective(allocations)
+
+        for allocation_index, allocation in enumerate(allocations):
+            for member in allocation.people:
+                for unused_person in list(unused_people):
+                    replacement_team = tuple(
+                        unused_person if candidate.id == member.id else candidate
+                        for candidate in allocation.people
+                    )
+                    rescored_allocation = score_team(
+                        request,
+                        task_id=allocation.task_id,
+                        people=replacement_team,
+                        mode=mode,
+                        preset=preset,
+                        normalize_weights=normalize_weights,
+                    )
+                    trial_allocations = allocations.copy()
+                    trial_allocations[allocation_index] = rescored_allocation
+                    if allocation_objective(trial_allocations) > current_objective:
+                        allocations = trial_allocations
+                        unused_people.remove(unused_person)
+                        unused_people.append(member)
+                        improved = True
+                        break
+                if improved:
+                    break
+            if improved:
+                break
+
+        if improved:
+            continue
+
+        for left_index, right_index in itertools.combinations(
+            range(len(allocations)), 2
+        ):
+            left = allocations[left_index]
+            right = allocations[right_index]
+            for left_member in left.people:
+                for right_member in right.people:
+                    swapped_left = tuple(
+                        right_member if member.id == left_member.id else member
+                        for member in left.people
+                    )
+                    swapped_right = tuple(
+                        left_member if member.id == right_member.id else member
+                        for member in right.people
+                    )
+                    rescored_left = score_team(
+                        request,
+                        task_id=left.task_id,
+                        people=swapped_left,
+                        mode=mode,
+                        preset=preset,
+                        normalize_weights=normalize_weights,
+                    )
+                    rescored_right = score_team(
+                        request,
+                        task_id=right.task_id,
+                        people=swapped_right,
+                        mode=mode,
+                        preset=preset,
+                        normalize_weights=normalize_weights,
+                    )
+                    trial_allocations = allocations.copy()
+                    trial_allocations[left_index] = rescored_left
+                    trial_allocations[right_index] = rescored_right
+                    if allocation_objective(trial_allocations) > current_objective:
+                        allocations = trial_allocations
+                        improved = True
+                        break
+                if improved:
+                    break
+            if improved:
+                break
+
+    return allocations
+
+
+def form_teams(
+    request: FormationRequest,
+    *,
+    mode: Mode = Mode.COMPAT,
+    preset: WeightPreset | None = None,
+    normalize_weights: bool = False,
+    max_candidate_teams: int | None = None,
+    shortlist_padding: int = 6,
+    swap_rounds: int = 8,
+    seed: int | None = None,
+) -> TeamsResponse:
+    validate_max_candidate_teams(max_candidate_teams)
+    if request.total_requested_seats > len(request.people):
+        raise TeamFormationError(
+            'Cannot form teams with the provided data: insufficient headcount.'
+        )
+
+    randomizer = random.Random(seed)
+    task_order = list(request.tasks)
+    task_order.sort(
+        key=lambda task: (-task_hardness(task.id, request, mode=mode), task.id)
+    )
+    if request.init_random:
+        randomizer.shuffle(task_order)
+
+    exact = None
+    if capped_candidate_search_is_exact(
+        request,
+        max_candidate_teams=max_candidate_teams,
+    ):
+        exact = exact_allocations(
+            request,
+            task_order=task_order,
+            mode=mode,
+            preset=preset,
+            normalize_weights=normalize_weights,
+            max_candidate_teams=max_candidate_teams,
+            shortlist_padding=shortlist_padding,
+            randomizer=randomizer,
+        )
+    if exact is None:
+        allocations, unused_people = greedy_allocations(
+            request,
+            task_order=task_order,
+            mode=mode,
+            preset=preset,
+            normalize_weights=normalize_weights,
+            max_candidate_teams=max_candidate_teams,
+            shortlist_padding=shortlist_padding,
+            randomizer=randomizer,
+        )
+    else:
+        allocations, unused_people = exact
+
+    if swap_rounds > 0:
+        allocations = improve_allocations(
+            request,
+            allocations=allocations,
+            unused_people=unused_people,
+            mode=mode,
+            preset=preset,
+            normalize_weights=normalize_weights,
+            swap_rounds=swap_rounds,
+        )
+
+    original_order = {task.id: index for index, task in enumerate(request.tasks)}
+    teams = [
+        TeamResult(
+            taskId=allocation.task_id,
+            people=assigned_people_from_assignments(allocation.assignments),
+            quality=allocation.quality,
+        )
+        for allocation in sorted(
+            allocations,
+            key=lambda allocation: original_order[allocation.task_id],
+        )
+    ]
+    return TeamsResponse(teams=teams)

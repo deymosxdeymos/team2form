@@ -1,0 +1,45 @@
+[project]
+name = "team2form"
+version = "0.1.0"
+description = "Hybrid local reimplementation of the Edu2Com team formation model"
+readme = "README.md"
+authors = [{ name = "deymosxdeymos", email = "75256437+deymosxdeymos@users.noreply.github.com" }]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.135.1",
+    "pydantic>=2.12.5",
+    "uvicorn>=0.38.0",
+]
+
+[project.scripts]
+team2form = "team2form.cli:main"
+team2form-api = "team2form.server:main"
+
+[build-system]
+requires = ["uv_build>=0.9.27,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.0.2",
+    "ruff>=0.15.5",
+    "ty>=0.0.21",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.ruff.format]
+quote-style = "single"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ty.src]
+include = ["src", "tests"]
