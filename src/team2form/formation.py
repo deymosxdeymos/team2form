@@ -13,8 +13,7 @@ from .models import FormationRequest, Person, TeamResult, TeamsResponse
 from .modes import Mode, WeightPreset
 from .scoring import (
     assigned_people_from_assignments,
-    build_team_quality_request,
-    calculate_team_quality,
+    calculate_team_quality_for_people,
     coverage_for_person_and_task_skill,
     preference_lookup,
     similarity_lookup,
@@ -483,6 +482,7 @@ def score_team(
     compat_task_preference_default = None
     compat_social_preference_default = None
     compat_zero_social_without_preferences = False
+    valid_task_preferences: dict[str, float] | None = None
     if mode == Mode.COMPAT:
         teammate_ids = {member.id for member in people}
         valid_person_ids = {candidate.id for candidate in request.people}
@@ -499,22 +499,18 @@ def score_team(
         )
         compat_zero_social_without_preferences = not has_team_social_preferences
 
-    breakdown = calculate_team_quality(
-        build_team_quality_request(
-            task=task,
-            team=list(people),
-            all_tasks=request.tasks,
-            alpha=request.alpha,
-            beta=request.beta,
-            gamma=request.gamma,
-            delta=request.delta,
-            similarities=request.similarities,
-            mode=mode,
-            compat_task_preference_default=compat_task_preference_default,
-        ),
+    breakdown = calculate_team_quality_for_people(
+        task_skills=task.skills,
+        team=people,
+        alpha=request.alpha,
+        beta=request.beta,
+        gamma=request.gamma,
+        delta=request.delta,
+        similarities=request.similarities,
         mode=mode,
         preset=preset,
         normalize_weights=normalize_weights,
+        task_preferences=valid_task_preferences,
         compat_task_preference_default=compat_task_preference_default,
         compat_social_preference_default=compat_social_preference_default,
         compat_zero_social_without_preferences=compat_zero_social_without_preferences,

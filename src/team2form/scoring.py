@@ -88,6 +88,21 @@ def task_preference_for_member(
     return compat_default
 
 
+
+def _task_preference_score(
+    team: Sequence[Person],
+    *,
+    task_preferences: dict[str, float] | None,
+    compat_default: float,
+) -> float:
+    if not task_preferences:
+        return geometric_mean(compat_default for _ in team)
+    return geometric_mean(
+        task_preferences.get(member.id, compat_default) for member in team
+    )
+
+
+
 def social_preference_for_pair(
     member: Person,
     teammate_id: str,
@@ -111,21 +126,29 @@ def team_task_preferences(
     )
 
 
+
 def team_social_score(
     team: Sequence[Person],
     *,
     compat_default: float,
 ) -> float:
+    if not team:
+        return 0.0
+
+    preference_mappings = {
+        member.id: preference_lookup(member.preferences)
+        for member in team
+    }
+    teammate_ids = tuple(member.id for member in team)
     member_scores: list[float] = []
     for member in team:
+        mapping = preference_mappings[member.id]
         member_scores.append(
             sum(
-                social_preference_for_pair(
-                    member,
-                    teammate.id,
-                    compat_default=compat_default,
-                )
-                for teammate in team
+                1.0
+                if member.id == teammate_id
+                else mapping.get(teammate_id, compat_default)
+                for teammate_id in teammate_ids
             )
             / len(team)
         )
@@ -979,30 +1002,37 @@ def build_team_quality_request(
     )
 
 
-def calculate_team_quality(
-    request: TeamQualityRequest,
+def calculate_team_quality_for_people(
     *,
+    task_skills: list[TaskSkill],
+    team: Sequence[Person],
+    alpha: float | None,
+    beta: float | None,
+    gamma: float | None,
+    delta: float | None,
+    similarities: list[Similarity] | None,
     mode: Mode = Mode.COMPAT,
     preset: WeightPreset | None = None,
     normalize_weights: bool = False,
+    task_preferences: dict[str, float] | None = None,
     compat_task_preference_default: float | None = None,
     compat_social_preference_default: float | None = None,
     compat_zero_social_without_preferences: bool = False,
 ) -> QualityBreakdown:
     weights = resolve_weights(
-        alpha=request.alpha,
-        beta=request.beta,
-        gamma=request.gamma,
-        delta=request.delta,
+        alpha=alpha,
+        beta=beta,
+        gamma=gamma,
+        delta=delta,
         mode=mode,
         preset=preset,
         normalize=normalize_weights,
     )
     assignment = assign_task_skills(
-        request.task_skills,
-        request.team,
+        task_skills,
+        team,
         mode=mode,
-        similarities=request.similarities,
+        similarities=similarities,
     )
     task_preference_default = (
         0.5
@@ -1014,19 +1044,20 @@ def calculate_team_quality(
         if compat_social_preference_default is None
         else compat_social_preference_default
     )
-    task_preference_score = team_task_preferences(
-        request.team,
+    task_preference_score = _task_preference_score(
+        team,
+        task_preferences=task_preferences,
         compat_default=task_preference_default,
     )
     social_score = (
         0.0
         if compat_zero_social_without_preferences
         else team_social_score(
-            request.team,
+            team,
             compat_default=social_preference_default,
         )
     )
-    personality_score = team_personality_score(request.team, mode=mode)
+    personality_score = team_personality_score(team, mode=mode)
     quality = (
         weights.alpha * assignment.skill_score
         + weights.beta * personality_score
@@ -1046,6 +1077,40 @@ def calculate_team_quality(
             'delta': weights.delta,
         },
         assignments=assignment.assignments,
+    )
+
+
+
+def calculate_team_quality(
+    request: TeamQualityRequest,
+    *,
+    mode: Mode = Mode.COMPAT,
+    preset: WeightPreset | None = None,
+    normalize_weights: bool = False,
+    compat_task_preference_default: float | None = None,
+    compat_social_preference_default: float | None = None,
+    compat_zero_social_without_preferences: bool = False,
+) -> QualityBreakdown:
+    task_preferences = {
+        member.id: member.task_preference
+        for member in request.team
+        if member.task_preference is not None
+    }
+    return calculate_team_quality_for_people(
+        task_skills=request.task_skills,
+        team=request.team,
+        alpha=request.alpha,
+        beta=request.beta,
+        gamma=request.gamma,
+        delta=request.delta,
+        similarities=request.similarities,
+        mode=mode,
+        preset=preset,
+        normalize_weights=normalize_weights,
+        task_preferences=task_preferences,
+        compat_task_preference_default=compat_task_preference_default,
+        compat_social_preference_default=compat_social_preference_default,
+        compat_zero_social_without_preferences=compat_zero_social_without_preferences,
     )
 
 
