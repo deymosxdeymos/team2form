@@ -40,6 +40,38 @@ MAX_SCORED_COMBINATION_EXPANSION = 4
 OBJECTIVE_REL_TOL = 1e-12
 OBJECTIVE_ABS_TOL = 1e-15
 
+_REQUEST_TEAM_COMPONENT_CACHES: dict[
+    int,
+    tuple[
+        FormationRequest,
+        dict[tuple[Mode, tuple[str, ...]], float],
+        dict[tuple[float, tuple[str, ...]], float],
+    ],
+] = {}
+
+
+
+def _request_team_component_caches(
+    request: FormationRequest,
+) -> tuple[
+    dict[tuple[Mode, tuple[str, ...]], float],
+    dict[tuple[float, tuple[str, ...]], float],
+]:
+    cache_key = id(request)
+    cached = _REQUEST_TEAM_COMPONENT_CACHES.get(cache_key)
+    if cached is not None and cached[0] is request:
+        return cached[1], cached[2]
+
+    personality_cache: dict[tuple[Mode, tuple[str, ...]], float] = {}
+    social_cache: dict[tuple[float, tuple[str, ...]], float] = {}
+    _REQUEST_TEAM_COMPONENT_CACHES[cache_key] = (
+        request,
+        personality_cache,
+        social_cache,
+    )
+    return personality_cache, social_cache
+
+
 
 def validate_max_candidate_teams(max_candidate_teams: int | None) -> None:
     if max_candidate_teams is not None and max_candidate_teams <= 0:
@@ -499,6 +531,31 @@ def score_team(
         )
         compat_zero_social_without_preferences = not has_team_social_preferences
 
+    personality_cache, social_cache = _request_team_component_caches(request)
+    team_signature = tuple(sorted(member.id for member in people))
+
+    personality_cache_key = (mode, team_signature)
+    personality_score = personality_cache.get(personality_cache_key)
+    if personality_score is None:
+        personality_score = team_personality_score(people, mode=mode)
+        personality_cache[personality_cache_key] = personality_score
+
+    social_score = 0.0
+    if not compat_zero_social_without_preferences:
+        social_preference_default = (
+            0.5
+            if compat_social_preference_default is None
+            else compat_social_preference_default
+        )
+        social_cache_key = (social_preference_default, team_signature)
+        social_score = social_cache.get(social_cache_key)
+        if social_score is None:
+            social_score = team_social_score(
+                people,
+                compat_default=social_preference_default,
+            )
+            social_cache[social_cache_key] = social_score
+
     breakdown = calculate_team_quality_for_people(
         task_skills=task.skills,
         team=people,
@@ -514,6 +571,8 @@ def score_team(
         compat_task_preference_default=compat_task_preference_default,
         compat_social_preference_default=compat_social_preference_default,
         compat_zero_social_without_preferences=compat_zero_social_without_preferences,
+        personality_score=personality_score,
+        social_score=social_score,
     )
     return ScoredAllocation(
         task_id=task_id,

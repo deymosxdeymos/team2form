@@ -1018,6 +1018,8 @@ def calculate_team_quality_for_people(
     compat_task_preference_default: float | None = None,
     compat_social_preference_default: float | None = None,
     compat_zero_social_without_preferences: bool = False,
+    personality_score: float | None = None,
+    social_score: float | None = None,
 ) -> QualityBreakdown:
     weights = resolve_weights(
         alpha=alpha,
@@ -1049,15 +1051,17 @@ def calculate_team_quality_for_people(
         task_preferences=task_preferences,
         compat_default=task_preference_default,
     )
-    social_score = (
-        0.0
-        if compat_zero_social_without_preferences
-        else team_social_score(
-            team,
-            compat_default=social_preference_default,
+    if social_score is None:
+        social_score = (
+            0.0
+            if compat_zero_social_without_preferences
+            else team_social_score(
+                team,
+                compat_default=social_preference_default,
+            )
         )
-    )
-    personality_score = team_personality_score(team, mode=mode)
+    if personality_score is None:
+        personality_score = team_personality_score(team, mode=mode)
     quality = (
         weights.alpha * assignment.skill_score
         + weights.beta * personality_score
