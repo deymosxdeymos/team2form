@@ -23,6 +23,11 @@ from .weights import resolve_weights
 EPSILON = 1e-12
 MAX_EXACT_PARTITIONED_TASK_SKILLS = 12
 
+_COMPAT_MEMBER_TASK_VALUES_CACHE: dict[
+    tuple[int, tuple[str, ...]],
+    tuple[Person, tuple[float, ...]],
+] = {}
+
 
 @dataclass(slots=True)
 class AssignmentResult:
@@ -280,11 +285,22 @@ def compat_person_skill_value(
 def _compat_member_task_values(
     member: Person,
     task_skills: Sequence[TaskSkill],
-) -> list[float]:
+) -> tuple[float, ...]:
+    task_skill_ids = tuple(task_skill.id for task_skill in task_skills)
+    cache_key = (id(member), task_skill_ids)
+    cached = _COMPAT_MEMBER_TASK_VALUES_CACHE.get(cache_key)
+    if cached is not None and cached[0] is member:
+        return cached[1]
+
     first_levels: dict[str, float] = {}
     for skill in member.skills:
         first_levels.setdefault(skill.id, skill.level)
-    return [first_levels.get(task_skill.id, 0.0) for task_skill in task_skills]
+    values = tuple(
+        first_levels.get(task_skill_id, 0.0)
+        for task_skill_id in task_skill_ids
+    )
+    _COMPAT_MEMBER_TASK_VALUES_CACHE[cache_key] = (member, values)
+    return values
 
 
 def _compat_task_capable_counts(
