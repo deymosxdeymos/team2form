@@ -523,6 +523,34 @@ def score_team(
     )
 
 
+
+def cached_score_team(
+    request: FormationRequest,
+    *,
+    task_id: str,
+    people: tuple[Person, ...],
+    mode: Mode,
+    preset: WeightPreset | None,
+    normalize_weights: bool,
+    score_cache: dict[tuple[str, tuple[str, ...]], ScoredAllocation],
+) -> ScoredAllocation:
+    candidate_key = (task_id, tuple(person.id for person in people))
+    cached = score_cache.get(candidate_key)
+    if cached is not None:
+        return cached
+    scored = score_team(
+        request,
+        task_id=task_id,
+        people=people,
+        mode=mode,
+        preset=preset,
+        normalize_weights=normalize_weights,
+    )
+    score_cache[candidate_key] = scored
+    return scored
+
+
+
 def build_scored_candidates(
     request: FormationRequest,
     *,
@@ -533,6 +561,7 @@ def build_scored_candidates(
     max_candidate_teams: int | None,
     shortlist_padding: int,
     randomizer: random.Random,
+    score_cache: dict[tuple[str, tuple[str, ...]], ScoredAllocation],
 ) -> list[list[tuple[int, ScoredAllocation]]]:
     person_index = {person.id: index for index, person in enumerate(request.people)}
     task_candidates: list[list[tuple[int, ScoredAllocation]]] = []
@@ -547,27 +576,20 @@ def build_scored_candidates(
             preset=preset,
             normalize_weights=normalize_weights,
         )
-        scored_allocations: dict[tuple[str, ...], ScoredAllocation] = {}
-
         def scored_candidate(
             candidate: tuple[Person, ...],
             *,
             task_id: str = task.id,
-            scored_allocations: dict[
-                tuple[str, ...], ScoredAllocation
-            ] = scored_allocations,
         ) -> ScoredAllocation:
-            candidate_key = tuple(person.id for person in candidate)
-            if candidate_key not in scored_allocations:
-                scored_allocations[candidate_key] = score_team(
-                    request,
-                    task_id=task_id,
-                    people=candidate,
-                    mode=mode,
-                    preset=preset,
-                    normalize_weights=normalize_weights,
-                )
-            return scored_allocations[candidate_key]
+            return cached_score_team(
+                request,
+                task_id=task_id,
+                people=candidate,
+                mode=mode,
+                preset=preset,
+                normalize_weights=normalize_weights,
+                score_cache=score_cache,
+            )
 
         candidates = candidate_combinations(
             people=request.people,
@@ -608,6 +630,7 @@ def greedy_allocations(
     max_candidate_teams: int | None,
     shortlist_padding: int,
     randomizer: random.Random,
+    score_cache: dict[tuple[str, tuple[str, ...]], ScoredAllocation],
 ) -> tuple[list[ScoredAllocation], list[Person]]:
     remaining_people = list(request.people)
     allocations: list[ScoredAllocation] = []
@@ -623,27 +646,20 @@ def greedy_allocations(
             preset=preset,
             normalize_weights=normalize_weights,
         )
-        scored_allocations: dict[tuple[str, ...], ScoredAllocation] = {}
-
         def scored_candidate(
             candidate: tuple[Person, ...],
             *,
             task_id: str = task_id,
-            scored_allocations: dict[
-                tuple[str, ...], ScoredAllocation
-            ] = scored_allocations,
         ) -> ScoredAllocation:
-            candidate_key = tuple(person.id for person in candidate)
-            if candidate_key not in scored_allocations:
-                scored_allocations[candidate_key] = score_team(
-                    request,
-                    task_id=task_id,
-                    people=candidate,
-                    mode=mode,
-                    preset=preset,
-                    normalize_weights=normalize_weights,
-                )
-            return scored_allocations[candidate_key]
+            return cached_score_team(
+                request,
+                task_id=task_id,
+                people=candidate,
+                mode=mode,
+                preset=preset,
+                normalize_weights=normalize_weights,
+                score_cache=score_cache,
+            )
 
         candidates = candidate_combinations(
             people=remaining_people,
@@ -688,6 +704,7 @@ def exact_allocations(
     max_candidate_teams: int | None,
     shortlist_padding: int,
     randomizer: random.Random,
+    score_cache: dict[tuple[str, tuple[str, ...]], ScoredAllocation],
 ) -> tuple[list[ScoredAllocation], list[Person]] | None:
     task_candidates = [
         list(candidates)
@@ -700,6 +717,7 @@ def exact_allocations(
             max_candidate_teams=max_candidate_teams,
             shortlist_padding=shortlist_padding,
             randomizer=randomizer,
+            score_cache=score_cache,
         )
     ]
     seats_needed = [0] * (len(task_order) + 1)
@@ -876,6 +894,7 @@ def improve_allocations(
     preset: WeightPreset | None,
     normalize_weights: bool,
     swap_rounds: int,
+    score_cache: dict[tuple[str, tuple[str, ...]], ScoredAllocation],
 ) -> list[ScoredAllocation]:
     improved = True
     rounds = 0
@@ -891,13 +910,14 @@ def improve_allocations(
                         unused_person if candidate.id == member.id else candidate
                         for candidate in allocation.people
                     )
-                    rescored_allocation = score_team(
+                    rescored_allocation = cached_score_team(
                         request,
                         task_id=allocation.task_id,
                         people=replacement_team,
                         mode=mode,
                         preset=preset,
                         normalize_weights=normalize_weights,
+                        score_cache=score_cache,
                     )
                     trial_allocations = allocations.copy()
                     trial_allocations[allocation_index] = rescored_allocation
@@ -930,21 +950,23 @@ def improve_allocations(
                         left_member if member.id == right_member.id else member
                         for member in right.people
                     )
-                    rescored_left = score_team(
+                    rescored_left = cached_score_team(
                         request,
                         task_id=left.task_id,
                         people=swapped_left,
                         mode=mode,
                         preset=preset,
                         normalize_weights=normalize_weights,
+                        score_cache=score_cache,
                     )
-                    rescored_right = score_team(
+                    rescored_right = cached_score_team(
                         request,
                         task_id=right.task_id,
                         people=swapped_right,
                         mode=mode,
                         preset=preset,
                         normalize_weights=normalize_weights,
+                        score_cache=score_cache,
                     )
                     trial_allocations = allocations.copy()
                     trial_allocations[left_index] = rescored_left
@@ -979,6 +1001,7 @@ def form_teams(
         )
 
     randomizer = random.Random(seed)
+    score_cache: dict[tuple[str, tuple[str, ...]], ScoredAllocation] = {}
     task_order = list(request.tasks)
     task_order.sort(
         key=lambda task: (-task_hardness(task.id, request, mode=mode), task.id)
@@ -1000,6 +1023,7 @@ def form_teams(
             max_candidate_teams=max_candidate_teams,
             shortlist_padding=shortlist_padding,
             randomizer=randomizer,
+            score_cache=score_cache,
         )
     if exact is None:
         allocations, unused_people = greedy_allocations(
@@ -1011,6 +1035,7 @@ def form_teams(
             max_candidate_teams=max_candidate_teams,
             shortlist_padding=shortlist_padding,
             randomizer=randomizer,
+            score_cache=score_cache,
         )
     else:
         allocations, unused_people = exact
@@ -1024,6 +1049,7 @@ def form_teams(
             preset=preset,
             normalize_weights=normalize_weights,
             swap_rounds=swap_rounds,
+            score_cache=score_cache,
         )
 
     original_order = {task.id: index for index, task in enumerate(request.tasks)}

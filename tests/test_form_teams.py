@@ -403,6 +403,7 @@ def test_build_scored_candidates_reuses_cached_team_scores(
         max_candidate_teams=2,
         shortlist_padding=0,
         randomizer=random.Random(0),
+        score_cache={},
     )
 
     assert len(task_candidates) == 1
@@ -467,6 +468,7 @@ def test_greedy_allocations_reuses_cached_team_scores(
         max_candidate_teams=2,
         shortlist_padding=0,
         randomizer=random.Random(0),
+        score_cache={},
     )
 
     assert len(allocations) == 1
@@ -549,6 +551,7 @@ def test_greedy_allocations_preserves_shuffled_tie_breaking_when_init_random(
         max_candidate_teams=2,
         shortlist_padding=0,
         randomizer=randomizer,
+        score_cache={},
     )
 
     assert [member.id for member in allocations[0].people] == ['a', 'c']
@@ -929,6 +932,7 @@ def test_exact_allocations_keeps_equal_product_suffix_frontier(
         max_candidate_teams=DEFAULT_MAX_CANDIDATE_TEAMS,
         shortlist_padding=6,
         randomizer=random.Random(0),
+        score_cache={},
     )
 
     assert result is not None
@@ -1008,6 +1012,7 @@ def test_exact_allocations_treats_near_equal_suffix_products_as_ties(
         max_candidate_teams=DEFAULT_MAX_CANDIDATE_TEAMS,
         shortlist_padding=6,
         randomizer=random.Random(0),
+        score_cache={},
     )
 
     assert result is not None
@@ -1107,6 +1112,7 @@ def test_exact_allocations_indexes_suffix_candidates_once(
         max_candidate_teams=DEFAULT_MAX_CANDIDATE_TEAMS,
         shortlist_padding=6,
         randomizer=random.Random(0),
+        score_cache={},
     )
 
     assert result is not None
@@ -2475,6 +2481,7 @@ def test_form_teams_reconsiders_unused_people_during_improvement() -> None:
         max_candidate_teams=DEFAULT_MAX_CANDIDATE_TEAMS,
         shortlist_padding=6,
         randomizer=random.Random(0),
+        score_cache={},
     )
     improved = form_teams(
         request,
@@ -2884,6 +2891,7 @@ def test_form_teams_prefers_global_project_mapping_over_best_first_task() -> Non
         max_candidate_teams=DEFAULT_MAX_CANDIDATE_TEAMS,
         shortlist_padding=6,
         randomizer=random.Random(0),
+        score_cache={},
     )
     response = form_teams(
         request,
