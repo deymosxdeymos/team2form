@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-import statistics
 from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass
 
@@ -133,59 +132,65 @@ def team_social_score(
     return geometric_mean(member_scores)
 
 
+def _population_stddev(values: Sequence[float]) -> float:
+    if not values:
+        return 0.0
+    mean = sum(values) / len(values)
+    variance = sum((value - mean) ** 2 for value in values) / len(values)
+    return math.sqrt(variance)
+
+
+
 def team_personality_score(team: Sequence[Person], *, mode: Mode) -> float:
     if not team:
         return 0.0
 
-    sn_values = [member.personality.sn for member in team]
-    tf_values = [member.personality.tf for member in team]
-    declared_genders = {member.gender for member in team if member.gender is not None}
+    sn_values: list[float] = []
+    tf_values: list[float] = []
+    declared_genders: set[str] = set()
+    best_compat_etj = 0.0
+    best_paper_etj = 0.0
+    best_compat_introvert = 0.0
+    best_paper_introvert = 0.0
+
+    for member in team:
+        personality = member.personality
+        sn_values.append(personality.sn)
+        tf_values.append(personality.tf)
+        if member.gender is not None:
+            declared_genders.add(member.gender)
+        if personality.ei > 0 and personality.tf > 0 and personality.pj > 0:
+            compat_etj = (personality.ei + personality.tf + personality.pj) / 3.0
+            if compat_etj > best_compat_etj:
+                best_compat_etj = compat_etj
+            paper_etj = 0.19 * (
+                personality.tf + personality.ei + personality.pj
+            )
+            if paper_etj > best_paper_etj:
+                best_paper_etj = paper_etj
+        compat_introvert = max(-personality.ei, 0.0)
+        if compat_introvert > best_compat_introvert:
+            best_compat_introvert = compat_introvert
+        paper_introvert = max(0.0, 0.19 * (-personality.ei))
+        if paper_introvert > best_paper_introvert:
+            best_paper_introvert = paper_introvert
+
+    sn_stddev = _population_stddev(sn_values)
+    tf_stddev = _population_stddev(tf_values)
 
     if mode == Mode.COMPAT:
-        diversity = 0.75 * statistics.pstdev(sn_values) * statistics.pstdev(tf_values)
-        etj_bonus = 0.2475 * max(
-            (
-                (member.personality.ei + member.personality.tf + member.personality.pj)
-                / 3.0
-                if member.personality.ei > 0
-                and member.personality.tf > 0
-                and member.personality.pj > 0
-                else 0.0
-            )
-            for member in team
-        )
-        introvert_bonus = 0.2475 * max(
-            max(-member.personality.ei, 0.0) for member in team
-        )
+        diversity = 0.75 * sn_stddev * tf_stddev
         gender_bonus = _compat_gender_bonus(team)
-        return diversity + etj_bonus + introvert_bonus + gender_bonus
+        return (
+            diversity
+            + (0.2475 * best_compat_etj)
+            + (0.2475 * best_compat_introvert)
+            + gender_bonus
+        )
 
-    distinct_genders = declared_genders
-    diversity = statistics.pstdev(sn_values) * statistics.pstdev(tf_values)
-    etj_bonus = max(
-        (
-            max(
-                0.0,
-                0.19
-                * (
-                    member.personality.tf
-                    + member.personality.ei
-                    + member.personality.pj
-                ),
-            )
-            for member in team
-            if member.personality.ei > 0
-            and member.personality.tf > 0
-            and member.personality.pj > 0
-        ),
-        default=0.0,
-    )
-    introvert_bonus = max(
-        (max(0.0, 0.19 * (-member.personality.ei)) for member in team),
-        default=0.0,
-    )
-    gender_bonus = 0.1 if len(distinct_genders) > 1 else 0.0
-    return diversity + etj_bonus + introvert_bonus + gender_bonus
+    diversity = sn_stddev * tf_stddev
+    gender_bonus = 0.1 if len(declared_genders) > 1 else 0.0
+    return diversity + best_paper_etj + best_paper_introvert + gender_bonus
 
 
 def _compat_gender_bonus(team: Sequence[Person]) -> float:

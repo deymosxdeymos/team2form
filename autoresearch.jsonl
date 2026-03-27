@@ -1,1 +1,2 @@
 {"type":"config","name":"Optimize form_teams capped-search performance","metricName":"total_ms","metricUnit":"ms","bestDirection":"lower"}
+{"run":1,"commit":"f3a1a36","metric":616.363918,"metrics":{},"status":"keep","description":"Baseline capped compat workload harness; profiling points to repeated score_team work, especially personality scoring, Pydantic request construction, and compat skill assignment.","timestamp":1774597534095,"segment":0,"confidence":null,"iterationTokens":105}
