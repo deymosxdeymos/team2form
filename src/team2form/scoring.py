@@ -462,6 +462,14 @@ def _compat_fill_uncovered_assignments(
     max_skills_per_member = math.ceil(len(task_skills) / len(assignments))
     next_skill_index = 0
 
+    if max_skills_per_member == 1:
+        for member_id, skill_ids in assignments.items():
+            if skill_ids or next_skill_index >= len(uncovered_skill_ids):
+                continue
+            assignments[member_id] = [uncovered_skill_ids[next_skill_index]]
+            next_skill_index += 1
+        return assignments
+
     for member_id, skill_ids in assignments.items():
         if (
             skill_ids
