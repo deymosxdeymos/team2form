@@ -42,8 +42,25 @@ This workload is intentionally small enough to run repeatedly, but large enough 
 
 ## What's Been Tried
 - Initial profiling on the synthetic capped workload showed `score_team()` dominating runtime.
-- The hottest transitive costs were:
-  - repeated `team_personality_score()` calls via `statistics.pstdev()`
-  - repeated Pydantic object construction in `build_team_quality_request()`
-  - compat task-skill assignment work in `_assign_task_skills_compat()`
-- First experiments should focus on removing avoidable per-candidate recomputation before attempting larger search changes.
+- Kept:
+  - Replaced `statistics.pstdev()` in personality scoring with a float-only implementation. This was the first major win.
+  - Added a direct formation scoring path that reuses raw `Person` objects instead of rebuilding Pydantic `TeamQualityRequest` / `TeamMember` structures for every candidate.
+  - Added a form-wide `ScoredAllocation` cache shared by candidate generation and swap improvement so repeated task/team evaluations are reused.
+  - Cached team-only personality and social components across tasks and swap evaluations; the same group composition often reappears under different tasks.
+  - Cached compat member task-value vectors by member identity plus ordered task-skill ids to avoid rebuilding the same per-person alignment arrays.
+- Discarded:
+  - Precomputing shortlist-scorer invariants per task did not improve the end-to-end benchmark.
+  - Caching per-request task lookup / filtered task preferences inside `score_team()` also failed to beat the current best.
+  - Replacing the square-team compat perfect-matching recursion with a bitmask DP was slower.
+  - Precomputing tiny task-skill cleanup structures for `_compat_fill_uncovered_assignments()` was slower.
+  - Making `improve_allocations()` compare objectives from quality lists instead of temporary allocation lists was slower.
+  - A naive merged-analysis rewrite of compat assignment changed behavior on regression tests and should not be retried casually.
+  - Small `math.isclose` micro-optimizations in `_compat_other_member_best_values()` were not worthwhile.
+- Current hotspot picture after the big wins:
+  - `_assign_task_skills_compat()` and its helper passes still dominate scoring cost.
+  - `candidate_combinations()` remains the next major bucket.
+  - `team_personality_score()` and `team_social_score()` are now much smaller after cross-task caching.
+- Good next directions:
+  - Collapse multiple helper passes inside `_assign_task_skills_compat()`.
+  - Reduce shortlist / candidate ranking overhead without hurting solution quality.
+  - Look for more team-independent values that can be reused across candidate evaluations.

@@ -303,25 +303,16 @@ def _compat_member_task_values(
     return values
 
 
-def _compat_task_capable_counts(
+def _compat_member_task_analysis(
     member_task_values: Sequence[Sequence[float]],
-) -> list[int]:
+) -> tuple[list[bool], list[int], list[list[float]]]:
     if not member_task_values:
-        return []
+        return [], [], []
+
+    member_count = len(member_task_values)
     task_count = len(member_task_values[0])
-    return [
-        sum(1 for task_values in member_task_values if task_values[task_index] > 0)
-        for task_index in range(task_count)
-    ]
-
-
-def _compat_other_member_best_values(
-    member_task_values: Sequence[Sequence[float]],
-) -> list[list[float]]:
-    if not member_task_values:
-        return []
-
-    task_count = len(member_task_values[0])
+    member_has_match = [False] * member_count
+    task_capable_counts = [0] * task_count
     best_values = [0.0] * task_count
     second_best_values = [0.0] * task_count
     best_value_counts = [0] * task_count
@@ -330,8 +321,12 @@ def _compat_other_member_best_values(
         best_value = 0.0
         second_best_value = 0.0
         best_value_count = 0
-        for task_values in member_task_values:
+        capable_count = 0
+        for member_index, task_values in enumerate(member_task_values):
             value = task_values[task_index]
+            if value > 0:
+                capable_count += 1
+                member_has_match[member_index] = True
             if value > best_value and not math.isclose(value, best_value):
                 second_best_value = best_value
                 best_value = value
@@ -343,6 +338,7 @@ def _compat_other_member_best_values(
                 second_best_value,
             ):
                 second_best_value = value
+        task_capable_counts[task_index] = capable_count
         best_values[task_index] = best_value
         second_best_values[task_index] = second_best_value
         best_value_counts[task_index] = best_value_count
@@ -360,17 +356,16 @@ def _compat_other_member_best_values(
                 for task_index in range(task_count)
             ]
         )
-    return other_member_best_values
+    return member_has_match, task_capable_counts, other_member_best_values
 
 
 def _compat_member_priority_order(
     task_skills: Sequence[TaskSkill],
     member_task_values: Sequence[Sequence[float]],
     *,
+    task_capable_counts: Sequence[int],
     require_all_members: bool,
 ) -> list[int]:
-    task_capable_counts = _compat_task_capable_counts(member_task_values)
-
     def scarce_first_priority_key(member_index: int) -> tuple[object, ...]:
         positive_tasks = tuple(
             sorted(
@@ -527,14 +522,13 @@ def _assign_task_skills_compat(
     member_task_values = [
         _compat_member_task_values(member, task_skills) for member in team
     ]
-    member_has_match = [
-        any(value > 0 for value in task_values) for task_values in member_task_values
-    ]
-    task_capable_counts = _compat_task_capable_counts(member_task_values)
-    other_member_best_values = _compat_other_member_best_values(member_task_values)
+    member_has_match, task_capable_counts, other_member_best_values = (
+        _compat_member_task_analysis(member_task_values)
+    )
     member_priority_order = _compat_member_priority_order(
         task_skills,
         member_task_values,
+        task_capable_counts=task_capable_counts,
         require_all_members=require_all_members,
     )
 

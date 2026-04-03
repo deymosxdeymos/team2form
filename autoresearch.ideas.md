@@ -1,0 +1,3 @@
+- Explore a specialized compat assignment path for the common `len(task_skills) == len(team)` case (e.g. explicit small bipartite search / permutation evaluation), but only if it can be proven equivalent to the current greedy/rescue semantics on the existing regression suite.
+- Investigate reducing shortlist candidate scoring work by reusing more task-independent precomputations inside `candidate_combinations()` / `shortlist_scorers()` without changing ranking quality.
+- Look for narrower `_assign_task_skills_compat()` wins that preserve current behavior exactly, such as caching or reusing existing intermediate results, rather than rewriting the helper pipeline wholesale.
