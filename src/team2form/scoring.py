@@ -374,35 +374,31 @@ def _compat_member_priority_order(
     require_all_members: bool,
 ) -> list[int]:
     def scarce_first_priority_key(member_index: int) -> tuple[object, ...]:
-        positive_tasks = tuple(
-            sorted(
+        positive_tasks = sorted(
+            (
+                task_capable_counts[task_index],
+                -value,
+                task_skill_ids[task_index],
+                task_index,
+            )
+            for task_index, value in enumerate(member_task_values[member_index])
+            if value > 0
+        )
+        return (not positive_tasks, positive_tasks, len(positive_tasks))
+
+    def rich_first_priority_key(member_index: int) -> tuple[object, ...]:
+        positive_tasks = sorted(
+            [
                 (
+                    value,
                     task_capable_counts[task_index],
-                    -value,
                     task_skill_ids[task_index],
                     task_index,
                 )
                 for task_index, value in enumerate(member_task_values[member_index])
                 if value > 0
-            )
-        )
-        return (not positive_tasks, positive_tasks, len(positive_tasks))
-
-    def rich_first_priority_key(member_index: int) -> tuple[object, ...]:
-        positive_tasks = tuple(
-            sorted(
-                [
-                    (
-                        value,
-                        task_capable_counts[task_index],
-                        task_skill_ids[task_index],
-                        task_index,
-                    )
-                    for task_index, value in enumerate(member_task_values[member_index])
-                    if value > 0
-                ],
-                reverse=True,
-            )
+            ],
+            reverse=True,
         )
         return (len(positive_tasks), positive_tasks)
 
