@@ -18,7 +18,7 @@ from .models import (
     TeamQualityRequest,
 )
 from .modes import Mode, WeightPreset
-from .weights import resolve_weights
+from .weights import Weights, resolve_weights
 
 EPSILON = 1e-12
 MAX_EXACT_PARTITIONED_TASK_SKILLS = 12
@@ -1091,8 +1091,9 @@ def calculate_team_quality_for_people(
     compat_zero_social_without_preferences: bool = False,
     personality_score: float | None = None,
     social_score: float | None = None,
+    resolved_weights: Weights | None = None,
 ) -> QualityBreakdown:
-    weights = resolve_weights(
+    weights = resolved_weights or resolve_weights(
         alpha=alpha,
         beta=beta,
         gamma=gamma,

@@ -59,6 +59,11 @@ _REQUEST_TASK_PREFERENCES_BY_TASK_ID: dict[
     tuple[FormationRequest, dict[str, dict[str, float]]],
 ] = {}
 
+_REQUEST_RESOLVED_WEIGHTS: dict[
+    tuple[int, Mode, WeightPreset | None, bool],
+    tuple[FormationRequest, object],
+] = {}
+
 
 def _request_tasks_by_id(request: FormationRequest) -> dict[str, Task]:
     cache_key = id(request)
@@ -92,6 +97,32 @@ def _request_task_preferences_by_task_id(
         task_preferences_by_task_id,
     )
     return task_preferences_by_task_id
+
+
+
+def _request_resolved_weights(
+    request: FormationRequest,
+    *,
+    mode: Mode,
+    preset: WeightPreset | None,
+    normalize_weights: bool,
+):
+    cache_key = (id(request), mode, preset, normalize_weights)
+    cached = _REQUEST_RESOLVED_WEIGHTS.get(cache_key)
+    if cached is not None and cached[0] is request:
+        return cached[1]
+
+    weights = resolve_weights(
+        alpha=request.alpha,
+        beta=request.beta,
+        gamma=request.gamma,
+        delta=request.delta,
+        mode=mode,
+        preset=preset,
+        normalize=normalize_weights,
+    )
+    _REQUEST_RESOLVED_WEIGHTS[cache_key] = (request, weights)
+    return weights
 
 
 
@@ -629,6 +660,12 @@ def score_team(
         compat_zero_social_without_preferences=compat_zero_social_without_preferences,
         personality_score=personality_score,
         social_score=social_score,
+        resolved_weights=_request_resolved_weights(
+            request,
+            mode=mode,
+            preset=preset,
+            normalize_weights=normalize_weights,
+        ),
     )
     return ScoredAllocation(
         task_id=task_id,
