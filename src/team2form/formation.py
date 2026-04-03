@@ -53,6 +53,11 @@ _REQUEST_TEAM_COMPONENT_CACHES: dict[
 
 _REQUEST_TASKS_BY_ID: dict[int, tuple[FormationRequest, dict[str, Task]]] = {}
 
+_REQUEST_TASK_PREFERENCES_BY_TASK_ID: dict[
+    int,
+    tuple[FormationRequest, dict[str, dict[str, float]]],
+] = {}
+
 
 def _request_tasks_by_id(request: FormationRequest) -> dict[str, Task]:
     cache_key = id(request)
@@ -63,6 +68,29 @@ def _request_tasks_by_id(request: FormationRequest) -> dict[str, Task]:
     tasks_by_id = {task.id: task for task in request.tasks}
     _REQUEST_TASKS_BY_ID[cache_key] = (request, tasks_by_id)
     return tasks_by_id
+
+
+def _request_task_preferences_by_task_id(
+    request: FormationRequest,
+) -> dict[str, dict[str, float]]:
+    cache_key = id(request)
+    cached = _REQUEST_TASK_PREFERENCES_BY_TASK_ID.get(cache_key)
+    if cached is not None and cached[0] is request:
+        return cached[1]
+
+    valid_person_ids = {candidate.id for candidate in request.people}
+    task_preferences_by_task_id = {
+        task.id: preference_lookup(
+            task.preferences,
+            valid_person_ids=valid_person_ids,
+        )
+        for task in request.tasks
+    }
+    _REQUEST_TASK_PREFERENCES_BY_TASK_ID[cache_key] = (
+        request,
+        task_preferences_by_task_id,
+    )
+    return task_preferences_by_task_id
 
 
 
@@ -531,11 +559,9 @@ def score_team(
     valid_task_preferences: dict[str, float] | None = None
     if mode == Mode.COMPAT:
         teammate_ids = {member.id for member in people}
-        valid_person_ids = {candidate.id for candidate in request.people}
-        valid_task_preferences = preference_lookup(
-            task.preferences,
-            valid_person_ids=valid_person_ids,
-        )
+        valid_task_preferences = _request_task_preferences_by_task_id(request)[
+            task_id
+        ]
         has_team_social_preferences = any(
             has_explicit_social_preferences(member, teammate_ids) for member in people
         )
