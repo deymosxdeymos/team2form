@@ -1,7 +1,6 @@
 - Design a semantics-preserving scored-candidate prefilter before `combination_scorer` using an admissible upper bound (must never drop potentially top-ranked combinations and must preserve current regression behavior).
 - Explore a broader `candidate_combinations()` ranked-selection redesign (algorithmic, not micro-tweaks), since many heap/list/comprehension/key-canonicalization micro-optimizations have consistently regressed.
 - Investigate behavior-preserving reductions in `_compat_member_task_analysis` / `_compat_member_priority_order` that remove whole classes of work (not extra caching/branching), while keeping exact tie-breaking semantics.
-- Revisit `improve_allocations` objective-delta evaluation (avoid per-trial `trial_allocations` copy + `allocation_objective` recompute) only as part of a combined change set; standalone was a solid relative gain but not enough to beat incumbent best.
 
 Pruned as stale/tried (do not retry without a materially different approach):
 - Per-shortlist or global caching layers for explicit social-preference pair checks.

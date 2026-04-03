@@ -425,8 +425,7 @@ def candidate_combinations(
         if not added:
             break
 
-    input_positions = {person.id: index for index, person in enumerate(people)}
-    shortlist.sort(key=lambda person: input_positions[person.id])
+    shortlist = [person for person in people if person.id in seen_ids]
 
     if combination_scorer is None:
         combinations = list(itertools.combinations(shortlist, team_size))
