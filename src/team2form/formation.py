@@ -35,6 +35,8 @@ class TeamFormationError(ValueError):
     pass
 
 
+ScoreCacheKey = tuple[str, tuple[int, ...]]
+
 DEFAULT_MAX_CANDIDATE_TEAMS = 10_000
 MAX_SCORED_COMBINATION_EXPANSION = 4
 OBJECTIVE_REL_TOL = 1e-12
@@ -591,9 +593,9 @@ def cached_score_team(
     mode: Mode,
     preset: WeightPreset | None,
     normalize_weights: bool,
-    score_cache: dict[tuple[str, tuple[str, ...]], ScoredAllocation],
+    score_cache: dict[ScoreCacheKey, ScoredAllocation],
 ) -> ScoredAllocation:
-    candidate_key = (task_id, tuple(person.id for person in people))
+    candidate_key = (task_id, tuple(id(person) for person in people))
     cached = score_cache.get(candidate_key)
     if cached is not None:
         return cached
@@ -620,7 +622,7 @@ def build_scored_candidates(
     max_candidate_teams: int | None,
     shortlist_padding: int,
     randomizer: random.Random,
-    score_cache: dict[tuple[str, tuple[str, ...]], ScoredAllocation],
+    score_cache: dict[ScoreCacheKey, ScoredAllocation],
 ) -> list[list[tuple[int, ScoredAllocation]]]:
     person_index = {person.id: index for index, person in enumerate(request.people)}
     task_candidates: list[list[tuple[int, ScoredAllocation]]] = []
@@ -689,7 +691,7 @@ def greedy_allocations(
     max_candidate_teams: int | None,
     shortlist_padding: int,
     randomizer: random.Random,
-    score_cache: dict[tuple[str, tuple[str, ...]], ScoredAllocation],
+    score_cache: dict[ScoreCacheKey, ScoredAllocation],
 ) -> tuple[list[ScoredAllocation], list[Person]]:
     remaining_people = list(request.people)
     allocations: list[ScoredAllocation] = []
@@ -763,7 +765,7 @@ def exact_allocations(
     max_candidate_teams: int | None,
     shortlist_padding: int,
     randomizer: random.Random,
-    score_cache: dict[tuple[str, tuple[str, ...]], ScoredAllocation],
+    score_cache: dict[ScoreCacheKey, ScoredAllocation],
 ) -> tuple[list[ScoredAllocation], list[Person]] | None:
     task_candidates = [
         list(candidates)
@@ -953,7 +955,7 @@ def improve_allocations(
     preset: WeightPreset | None,
     normalize_weights: bool,
     swap_rounds: int,
-    score_cache: dict[tuple[str, tuple[str, ...]], ScoredAllocation],
+    score_cache: dict[ScoreCacheKey, ScoredAllocation],
 ) -> list[ScoredAllocation]:
     improved = True
     rounds = 0
@@ -1060,7 +1062,7 @@ def form_teams(
         )
 
     randomizer = random.Random(seed)
-    score_cache: dict[tuple[str, tuple[str, ...]], ScoredAllocation] = {}
+    score_cache: dict[ScoreCacheKey, ScoredAllocation] = {}
     task_order = list(request.tasks)
     task_order.sort(
         key=lambda task: (-task_hardness(task.id, request, mode=mode), task.id)
