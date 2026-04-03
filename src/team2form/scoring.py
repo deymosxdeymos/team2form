@@ -570,29 +570,56 @@ def _assign_task_skills_compat(
             )
 
             best_task_index: int | None = None
-            best_priority: tuple[float, int, float, str, int] | None = None
+            best_value = 0.0
+            best_capable_count = 0
+            best_other_member_best = 0.0
+            best_skill_id = ''
             while candidate_mask:
                 task_bit = candidate_mask & -candidate_mask
                 task_index = task_bit.bit_length() - 1
                 candidate_mask ^= task_bit
                 value = task_values[task_index]
+                capable_count = task_capable_counts[task_index]
                 other_member_best = best_task_values[task_index]
                 if (
                     best_task_value_counts[task_index] == 1
                     and math.isclose(value, best_task_values[task_index])
                 ):
                     other_member_best = second_best_task_values[task_index]
+                skill_id = task_skill_ids[task_index]
 
-                candidate_priority = (
-                    value,
-                    task_capable_counts[task_index],
-                    other_member_best,
-                    task_skill_ids[task_index],
-                    -task_index,
+                is_better = best_task_index is None or (
+                    value > best_value
+                    or (
+                        value == best_value
+                        and (
+                            capable_count > best_capable_count
+                            or (
+                                capable_count == best_capable_count
+                                and (
+                                    other_member_best > best_other_member_best
+                                    or (
+                                        other_member_best
+                                        == best_other_member_best
+                                        and (
+                                            skill_id > best_skill_id
+                                            or (
+                                                skill_id == best_skill_id
+                                                and task_index < best_task_index
+                                            )
+                                        )
+                                    )
+                                )
+                            )
+                        )
+                    )
                 )
-                if best_priority is None or candidate_priority > best_priority:
+                if is_better:
                     best_task_index = task_index
-                    best_priority = candidate_priority
+                    best_value = value
+                    best_capable_count = capable_count
+                    best_other_member_best = other_member_best
+                    best_skill_id = skill_id
 
             if best_task_index is None:
                 break
