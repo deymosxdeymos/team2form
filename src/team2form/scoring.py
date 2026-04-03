@@ -305,13 +305,13 @@ def _compat_member_task_values(
 
 def _compat_member_task_analysis(
     member_task_values: Sequence[Sequence[float]],
-) -> tuple[list[bool], list[int], list[list[float]]]:
+) -> tuple[list[int], list[int], list[list[float]], list[float]]:
     if not member_task_values:
-        return [], [], []
+        return [], [], [], []
 
     member_count = len(member_task_values)
     task_count = len(member_task_values[0])
-    member_has_match = [False] * member_count
+    member_positive_masks = [0] * member_count
     task_capable_counts = [0] * task_count
     best_values = [0.0] * task_count
     second_best_values = [0.0] * task_count
@@ -326,7 +326,7 @@ def _compat_member_task_analysis(
             value = task_values[task_index]
             if value > 0:
                 capable_count += 1
-                member_has_match[member_index] = True
+                member_positive_masks[member_index] |= 1 << task_index
             if value > best_value and not math.isclose(value, best_value):
                 second_best_value = best_value
                 best_value = value
@@ -356,7 +356,12 @@ def _compat_member_task_analysis(
                 for task_index in range(task_count)
             ]
         )
-    return member_has_match, task_capable_counts, other_member_best_values
+    return (
+        member_positive_masks,
+        task_capable_counts,
+        other_member_best_values,
+        best_values,
+    )
 
 
 def _compat_member_priority_order(
@@ -522,9 +527,12 @@ def _assign_task_skills_compat(
     member_task_values = [
         _compat_member_task_values(member, task_skills) for member in team
     ]
-    member_has_match, task_capable_counts, other_member_best_values = (
-        _compat_member_task_analysis(member_task_values)
-    )
+    (
+        member_positive_masks,
+        task_capable_counts,
+        other_member_best_values,
+        best_task_values,
+    ) = _compat_member_task_analysis(member_task_values)
     member_priority_order = _compat_member_priority_order(
         task_skills,
         member_task_values,
@@ -535,19 +543,22 @@ def _assign_task_skills_compat(
     for member_index in member_priority_order:
         member = team[member_index]
         task_values = member_task_values[member_index]
+        positive_mask = member_positive_masks[member_index]
         member_mask = 0
         for _ in range(max_skills_per_member):
             available_mask = full_mask ^ member_mask
             preferred_mask = available_mask & (full_mask ^ covered_mask)
-            candidate_mask = preferred_mask if preferred_mask else available_mask
+            candidate_mask = (preferred_mask if preferred_mask else available_mask) & (
+                positive_mask
+            )
 
             best_task_index: int | None = None
             best_priority: tuple[float, int, float, str, int] | None = None
-            for task_index, value in enumerate(task_values):
-                if not candidate_mask & (1 << task_index):
-                    continue
-                if value <= 0:
-                    continue
+            while candidate_mask:
+                task_bit = candidate_mask & -candidate_mask
+                task_index = task_bit.bit_length() - 1
+                candidate_mask ^= task_bit
+                value = task_values[task_index]
                 candidate_priority = (
                     value,
                     task_capable_counts[task_index],
@@ -572,10 +583,7 @@ def _assign_task_skills_compat(
     while uncovered_mask:
         task_bit = uncovered_mask & -uncovered_mask
         task_index = task_bit.bit_length() - 1
-        rescued_value = max(
-            (task_values[task_index] for task_values in member_task_values),
-            default=0.0,
-        )
+        rescued_value = best_task_values[task_index]
         if rescued_value <= 0:
             return AssignmentResult(
                 assignments=_compat_fill_uncovered_assignments(
@@ -587,7 +595,7 @@ def _assign_task_skills_compat(
         rescued_values.append(rescued_value)
         uncovered_mask ^= task_bit
 
-    if any(not has_match for has_match in member_has_match):
+    if any(member_mask == 0 for member_mask in member_positive_masks):
         return AssignmentResult(
             assignments=_compat_fill_uncovered_assignments(task_skills, assignments),
             skill_score=0.0,
