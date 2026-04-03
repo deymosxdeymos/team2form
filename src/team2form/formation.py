@@ -48,6 +48,7 @@ _REQUEST_TEAM_COMPONENT_CACHES: dict[
         FormationRequest,
         dict[tuple[Mode, tuple[str, ...]], float],
         dict[tuple[float, tuple[str, ...]], float],
+        dict[tuple[str, ...], bool],
     ],
 ] = {}
 
@@ -99,20 +100,23 @@ def _request_team_component_caches(
 ) -> tuple[
     dict[tuple[Mode, tuple[str, ...]], float],
     dict[tuple[float, tuple[str, ...]], float],
+    dict[tuple[str, ...], bool],
 ]:
     cache_key = id(request)
     cached = _REQUEST_TEAM_COMPONENT_CACHES.get(cache_key)
     if cached is not None and cached[0] is request:
-        return cached[1], cached[2]
+        return cached[1], cached[2], cached[3]
 
     personality_cache: dict[tuple[Mode, tuple[str, ...]], float] = {}
     social_cache: dict[tuple[float, tuple[str, ...]], float] = {}
+    social_preference_presence_cache: dict[tuple[str, ...], bool] = {}
     _REQUEST_TEAM_COMPONENT_CACHES[cache_key] = (
         request,
         personality_cache,
         social_cache,
+        social_preference_presence_cache,
     )
-    return personality_cache, social_cache
+    return personality_cache, social_cache, social_preference_presence_cache
 
 
 
@@ -553,26 +557,38 @@ def score_team(
     normalize_weights: bool,
 ) -> ScoredAllocation:
     task = _request_tasks_by_id(request)[task_id]
+    team_signature = tuple(sorted(member.id for member in people))
+    (
+        personality_cache,
+        social_cache,
+        social_preference_presence_cache,
+    ) = _request_team_component_caches(request)
+
     compat_task_preference_default = None
     compat_social_preference_default = None
     compat_zero_social_without_preferences = False
     valid_task_preferences: dict[str, float] | None = None
     if mode == Mode.COMPAT:
-        teammate_ids = {member.id for member in people}
         valid_task_preferences = _request_task_preferences_by_task_id(request)[
             task_id
         ]
-        has_team_social_preferences = any(
-            has_explicit_social_preferences(member, teammate_ids) for member in people
+        has_team_social_preferences = social_preference_presence_cache.get(
+            team_signature
         )
+        if has_team_social_preferences is None:
+            teammate_ids = {member.id for member in people}
+            has_team_social_preferences = any(
+                has_explicit_social_preferences(member, teammate_ids)
+                for member in people
+            )
+            social_preference_presence_cache[team_signature] = (
+                has_team_social_preferences
+            )
         compat_task_preference_default = 0.0 if not valid_task_preferences else 0.5
         compat_social_preference_default = (
             0.0 if not has_team_social_preferences else 0.5
         )
         compat_zero_social_without_preferences = not has_team_social_preferences
-
-    personality_cache, social_cache = _request_team_component_caches(request)
-    team_signature = tuple(sorted(member.id for member in people))
 
     personality_cache_key = (mode, team_signature)
     personality_score = personality_cache.get(personality_cache_key)
