@@ -17,3 +17,5 @@ Pruned as stale/tried (do not retry without a materially different approach):
 - Precomputed per-person explicit-preference id sets in shortlist scoring.
 - Equality short-circuit rewrites around `math.isclose` in compat analysis.
 - Disabling alternate shortlist scorers in scored capped candidate generation.
+- Removing explicit shortlist list appends (count-only tracking) before input-order reconstruction in `candidate_combinations`.
+- Fixed-size (`len(team)==4`) unrolled fast path for `_task_preference_score`.

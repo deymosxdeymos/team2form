@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from functools import cache
 from typing import overload
 
-from .models import FormationRequest, Person, TeamResult, TeamsResponse
+from .models import FormationRequest, Person, Task, TeamResult, TeamsResponse
 from .modes import Mode, WeightPreset
 from .scoring import (
     assigned_people_from_assignments,
@@ -50,6 +50,19 @@ _REQUEST_TEAM_COMPONENT_CACHES: dict[
         dict[tuple[float, tuple[str, ...]], float],
     ],
 ] = {}
+
+_REQUEST_TASKS_BY_ID: dict[int, tuple[FormationRequest, dict[str, Task]]] = {}
+
+
+def _request_tasks_by_id(request: FormationRequest) -> dict[str, Task]:
+    cache_key = id(request)
+    cached = _REQUEST_TASKS_BY_ID.get(cache_key)
+    if cached is not None and cached[0] is request:
+        return cached[1]
+
+    tasks_by_id = {task.id: task for task in request.tasks}
+    _REQUEST_TASKS_BY_ID[cache_key] = (request, tasks_by_id)
+    return tasks_by_id
 
 
 
@@ -511,7 +524,7 @@ def score_team(
     preset: WeightPreset | None,
     normalize_weights: bool,
 ) -> ScoredAllocation:
-    task = next(task for task in request.tasks if task.id == task_id)
+    task = _request_tasks_by_id(request)[task_id]
     compat_task_preference_default = None
     compat_social_preference_default = None
     compat_zero_social_without_preferences = False
