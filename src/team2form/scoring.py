@@ -285,8 +285,11 @@ def compat_person_skill_value(
 def _compat_member_task_values(
     member: Person,
     task_skills: Sequence[TaskSkill],
+    *,
+    task_skill_ids: tuple[str, ...] | None = None,
 ) -> tuple[float, ...]:
-    task_skill_ids = tuple(task_skill.id for task_skill in task_skills)
+    if task_skill_ids is None:
+        task_skill_ids = tuple(task_skill.id for task_skill in task_skills)
     cache_key = (id(member), task_skill_ids)
     cached = _COMPAT_MEMBER_TASK_VALUES_CACHE.get(cache_key)
     if cached is not None and cached[0] is member:
@@ -365,7 +368,7 @@ def _compat_member_task_analysis(
 
 
 def _compat_member_priority_order(
-    task_skills: Sequence[TaskSkill],
+    task_skill_ids: Sequence[str],
     member_task_values: Sequence[Sequence[float]],
     *,
     task_capable_counts: Sequence[int],
@@ -377,7 +380,7 @@ def _compat_member_priority_order(
                 (
                     task_capable_counts[task_index],
                     -value,
-                    task_skills[task_index].id,
+                    task_skill_ids[task_index],
                     task_index,
                 )
                 for task_index, value in enumerate(member_task_values[member_index])
@@ -393,7 +396,7 @@ def _compat_member_priority_order(
                     (
                         value,
                         task_capable_counts[task_index],
-                        task_skills[task_index].id,
+                        task_skill_ids[task_index],
                         task_index,
                     )
                     for task_index, value in enumerate(member_task_values[member_index])
@@ -517,6 +520,7 @@ def _assign_task_skills_compat(
 ) -> AssignmentResult:
     _ = similarities
     member_ids = [member.id for member in team]
+    task_skill_ids = tuple(task_skill.id for task_skill in task_skills)
     full_mask = (1 << len(task_skills)) - 1
     max_skills_per_member = math.ceil(len(task_skills) / len(team))
     require_all_members = len(task_skills) < len(team)
@@ -525,7 +529,12 @@ def _assign_task_skills_compat(
     covered_mask = 0
 
     member_task_values = [
-        _compat_member_task_values(member, task_skills) for member in team
+        _compat_member_task_values(
+            member,
+            task_skills,
+            task_skill_ids=task_skill_ids,
+        )
+        for member in team
     ]
     (
         member_positive_masks,
@@ -534,7 +543,7 @@ def _assign_task_skills_compat(
         best_task_values,
     ) = _compat_member_task_analysis(member_task_values)
     member_priority_order = _compat_member_priority_order(
-        task_skills,
+        task_skill_ids,
         member_task_values,
         task_capable_counts=task_capable_counts,
         require_all_members=require_all_members,
@@ -563,7 +572,7 @@ def _assign_task_skills_compat(
                     value,
                     task_capable_counts[task_index],
                     other_member_best_values[member_index][task_index],
-                    task_skills[task_index].id,
+                    task_skill_ids[task_index],
                     -task_index,
                 )
                 if best_priority is None or candidate_priority > best_priority:
