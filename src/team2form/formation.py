@@ -333,14 +333,11 @@ def shortlist_scorers(
     Callable[[Person], tuple[float, float, float, float, float]],
     list[Callable[[Person], float]],
 ]:
-    weights = resolve_weights(
-        alpha=request.alpha,
-        beta=request.beta,
-        gamma=request.gamma,
-        delta=request.delta,
+    weights = _request_resolved_weights(
+        request,
         mode=mode,
         preset=preset,
-        normalize=normalize_weights,
+        normalize_weights=normalize_weights,
     )
     social_potentials: dict[str, float] = {}
     personality_potentials: dict[str, float] = {}
