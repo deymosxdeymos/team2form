@@ -962,9 +962,18 @@ def improve_allocations(
     while improved and rounds < swap_rounds:
         improved = False
         rounds += 1
-        current_objective = allocation_objective(allocations)
+
+        qualities = [allocation.quality for allocation in allocations]
+        current_product = 1.0
+        for quality in qualities:
+            current_product *= max(quality, 1e-12)
+        current_min = min(qualities) if qualities else 0.0
+        current_sum = sum(qualities)
+        current_objective = (current_product, current_min, current_sum)
 
         for allocation_index, allocation in enumerate(allocations):
+            old_quality = qualities[allocation_index]
+            old_quality_for_product = max(old_quality, 1e-12)
             for member in allocation.people:
                 for unused_person in list(unused_people):
                     replacement_team = tuple(
@@ -980,10 +989,26 @@ def improve_allocations(
                         normalize_weights=normalize_weights,
                         score_cache=score_cache,
                     )
-                    trial_allocations = allocations.copy()
-                    trial_allocations[allocation_index] = rescored_allocation
-                    if allocation_objective(trial_allocations) > current_objective:
-                        allocations = trial_allocations
+                    replacement_quality = rescored_allocation.quality
+                    trial_product = (
+                        current_product
+                        / old_quality_for_product
+                        * max(replacement_quality, 1e-12)
+                    )
+                    trial_sum = current_sum - old_quality + replacement_quality
+                    if old_quality == current_min:
+                        trial_min = replacement_quality
+                        for quality_index, quality in enumerate(qualities):
+                            if quality_index == allocation_index:
+                                continue
+                            if quality < trial_min:
+                                trial_min = quality
+                    else:
+                        trial_min = min(current_min, replacement_quality)
+
+                    if (trial_product, trial_min, trial_sum) > current_objective:
+                        allocations = allocations.copy()
+                        allocations[allocation_index] = rescored_allocation
                         unused_people.remove(unused_person)
                         unused_people.append(member)
                         improved = True
@@ -1001,6 +1026,8 @@ def improve_allocations(
         ):
             left = allocations[left_index]
             right = allocations[right_index]
+            old_left_quality = qualities[left_index]
+            old_right_quality = qualities[right_index]
             for left_member in left.people:
                 for right_member in right.people:
                     swapped_left = tuple(
@@ -1029,11 +1056,32 @@ def improve_allocations(
                         normalize_weights=normalize_weights,
                         score_cache=score_cache,
                     )
-                    trial_allocations = allocations.copy()
-                    trial_allocations[left_index] = rescored_left
-                    trial_allocations[right_index] = rescored_right
-                    if allocation_objective(trial_allocations) > current_objective:
-                        allocations = trial_allocations
+
+                    trial_product = (
+                        current_product
+                        / max(old_left_quality, 1e-12)
+                        / max(old_right_quality, 1e-12)
+                        * max(rescored_left.quality, 1e-12)
+                        * max(rescored_right.quality, 1e-12)
+                    )
+                    trial_sum = (
+                        current_sum
+                        - old_left_quality
+                        - old_right_quality
+                        + rescored_left.quality
+                        + rescored_right.quality
+                    )
+                    trial_min = min(rescored_left.quality, rescored_right.quality)
+                    for quality_index, quality in enumerate(qualities):
+                        if quality_index in (left_index, right_index):
+                            continue
+                        if quality < trial_min:
+                            trial_min = quality
+
+                    if (trial_product, trial_min, trial_sum) > current_objective:
+                        allocations = allocations.copy()
+                        allocations[left_index] = rescored_left
+                        allocations[right_index] = rescored_right
                         improved = True
                         break
                 if improved:

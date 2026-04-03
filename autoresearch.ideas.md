@@ -1,3 +1,20 @@
-- Explore a quality-safe candidate prefilter before `combination_scorer` (for example, an admissible upper bound from per-member fit components) that can skip obviously weak combinations without violating existing `candidate_combinations()` regression semantics.
-- Investigate whether shortlist ranking can be produced once per task and cheaply reused across primary/alternate scorer views (without changing deterministic ordering guarantees), to reduce repeated `sorted(people, key=...)` work.
-- Look for low-allocation rewrites inside `_compat_member_priority_order` / `_compat_member_task_analysis` that preserve exact tie-breaking and assignment behavior while reducing helper overhead.
+- Design a semantics-preserving scored-candidate prefilter before `combination_scorer` using an admissible upper bound (must never drop potentially top-ranked combinations and must preserve current regression behavior).
+- Explore a broader `candidate_combinations()` ranked-selection redesign (algorithmic, not micro-tweaks), since many heap/list/comprehension/key-canonicalization micro-optimizations have consistently regressed.
+- Investigate behavior-preserving reductions in `_compat_member_task_analysis` / `_compat_member_priority_order` that remove whole classes of work (not extra caching/branching), while keeping exact tie-breaking semantics.
+- Revisit `improve_allocations` objective-delta evaluation (avoid per-trial `trial_allocations` copy + `allocation_objective` recompute) only as part of a combined change set; standalone was a solid relative gain but not enough to beat incumbent best.
+
+Pruned as stale/tried (do not retry without a materially different approach):
+- Per-shortlist or global caching layers for explicit social-preference pair checks.
+- Extra caching around `score_team` team-signature construction or object-id reuse maps.
+- Tiny method-binding/branch-level micro-optimizations in shortlist merge loops.
+- `heapq.nlargest` replacement for scored top-k candidate selection in `candidate_combinations`.
+- Greedy uncapped shortcut that skips `shortlist_scorers` when combinations already fit under cap.
+- Local/per-call optimizations around `_compat_has_perfect_positive_matching` that only gate current logic without broader redesign.
+- Refactors that materialize extra per-member positive-index structures in compat analysis just to speed priority ordering.
+- Threading precomputed uncovered skill lists through `_compat_fill_uncovered_assignments`.
+- Singleton helper splitting for explicit social-preference checks in candidate social potential.
+- Prefix-only greedy rescoring based on candidate_combinations quality ordering (without a materially different implementation/proof).
+- Full materialize+sort replacement for scored top-k selection in `candidate_combinations`.
+- Precomputed per-person explicit-preference id sets in shortlist scoring.
+- Equality short-circuit rewrites around `math.isclose` in compat analysis.
+- Disabling alternate shortlist scorers in scored capped candidate generation.

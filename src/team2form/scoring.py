@@ -100,11 +100,22 @@ def _task_preference_score(
     task_preferences: dict[str, float] | None,
     compat_default: float,
 ) -> float:
+    if not team:
+        return 0.0
     if not task_preferences:
-        return geometric_mean(compat_default for _ in team)
-    return geometric_mean(
-        task_preferences.get(member.id, compat_default) for member in team
-    )
+        return compat_default
+
+    log_sum = 0.0
+    count = 0
+    for member in team:
+        value = task_preferences.get(member.id, compat_default)
+        if value <= 0:
+            return 0.0
+        log_sum += math.log(value)
+        count += 1
+    if count == 0:
+        return 0.0
+    return math.exp(log_sum / count)
 
 
 
@@ -308,9 +319,9 @@ def _compat_member_task_values(
 
 def _compat_member_task_analysis(
     member_task_values: Sequence[Sequence[float]],
-) -> tuple[list[int], list[int], list[list[float]], list[float]]:
+) -> tuple[list[int], list[int], list[float], list[float], list[int]]:
     if not member_task_values:
-        return [], [], [], []
+        return [], [], [], [], []
 
     member_count = len(member_task_values)
     task_count = len(member_task_values[0])
@@ -346,24 +357,12 @@ def _compat_member_task_analysis(
         second_best_values[task_index] = second_best_value
         best_value_counts[task_index] = best_value_count
 
-    other_member_best_values: list[list[float]] = []
-    for task_values in member_task_values:
-        other_member_best_values.append(
-            [
-                second_best_values[task_index]
-                if (
-                    math.isclose(task_values[task_index], best_values[task_index])
-                    and best_value_counts[task_index] == 1
-                )
-                else best_values[task_index]
-                for task_index in range(task_count)
-            ]
-        )
     return (
         member_positive_masks,
         task_capable_counts,
-        other_member_best_values,
         best_values,
+        second_best_values,
+        best_value_counts,
     )
 
 
@@ -547,8 +546,9 @@ def _assign_task_skills_compat(
     (
         member_positive_masks,
         task_capable_counts,
-        other_member_best_values,
         best_task_values,
+        second_best_task_values,
+        best_task_value_counts,
     ) = _compat_member_task_analysis(member_task_values)
     member_priority_order = _compat_member_priority_order(
         task_skill_ids,
@@ -576,10 +576,17 @@ def _assign_task_skills_compat(
                 task_index = task_bit.bit_length() - 1
                 candidate_mask ^= task_bit
                 value = task_values[task_index]
+                other_member_best = best_task_values[task_index]
+                if (
+                    best_task_value_counts[task_index] == 1
+                    and math.isclose(value, best_task_values[task_index])
+                ):
+                    other_member_best = second_best_task_values[task_index]
+
                 candidate_priority = (
                     value,
                     task_capable_counts[task_index],
-                    other_member_best_values[member_index][task_index],
+                    other_member_best,
                     task_skill_ids[task_index],
                     -task_index,
                 )
@@ -618,8 +625,10 @@ def _assign_task_skills_compat(
             skill_score=0.0,
         )
 
-    if len(task_skills) == len(team) and not _compat_has_perfect_positive_matching(
-        member_task_values
+    if (
+        len(task_skills) == len(team)
+        and rescued_values
+        and not _compat_has_perfect_positive_matching(member_task_values)
     ):
         return AssignmentResult(
             assignments=_compat_fill_uncovered_assignments(task_skills, assignments),
