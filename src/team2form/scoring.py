@@ -642,6 +642,14 @@ def _assign_task_skills_compat(
         rescued_values.append(rescued_value)
         uncovered_mask ^= task_bit
 
+    if max_skills_per_member == 1 and not rescued_values:
+        if any(member_mask == 0 for member_mask in member_positive_masks):
+            return AssignmentResult(assignments=assignments, skill_score=0.0)
+        return AssignmentResult(
+            assignments=assignments,
+            skill_score=geometric_mean(matched_values),
+        )
+
     if any(member_mask == 0 for member_mask in member_positive_masks):
         return AssignmentResult(
             assignments=_compat_fill_uncovered_assignments(task_skills, assignments),

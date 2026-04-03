@@ -1,6 +1,7 @@
 - Design a semantics-preserving scored-candidate prefilter before `combination_scorer` using an admissible upper bound (must never drop potentially top-ranked combinations and must preserve current regression behavior).
 - Explore a broader `candidate_combinations()` ranked-selection redesign (algorithmic, not micro-tweaks), since many heap/list/comprehension/key-canonicalization micro-optimizations have consistently regressed.
 - Investigate behavior-preserving reductions in `_compat_member_task_analysis` / `_compat_member_priority_order` that remove whole classes of work (not extra caching/branching), while keeping exact tie-breaking semantics.
+- Continue request-scoped immutable-data caching on the hottest score path only (task lookup/task preferences/team social-preference presence/resolved weights proved high leverage); avoid extending caches into colder paths unless profiling justifies it.
 
 Pruned as stale/tried (do not retry without a materially different approach):
 - Per-shortlist or global caching layers for explicit social-preference pair checks.
