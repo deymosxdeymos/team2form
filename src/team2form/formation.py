@@ -964,16 +964,28 @@ def improve_allocations(
         rounds += 1
 
         qualities = [allocation.quality for allocation in allocations]
+        clamped_qualities = [max(quality, 1e-12) for quality in qualities]
         current_product = 1.0
-        for quality in qualities:
-            current_product *= max(quality, 1e-12)
+        for quality in clamped_qualities:
+            current_product *= quality
         current_min = min(qualities) if qualities else 0.0
         current_sum = sum(qualities)
         current_objective = (current_product, current_min, current_sum)
+        min_without_index = [
+            min(
+                (
+                    quality
+                    for quality_index, quality in enumerate(qualities)
+                    if quality_index != allocation_index
+                ),
+                default=0.0,
+            )
+            for allocation_index in range(len(qualities))
+        ]
 
         for allocation_index, allocation in enumerate(allocations):
             old_quality = qualities[allocation_index]
-            old_quality_for_product = max(old_quality, 1e-12)
+            old_quality_for_product = clamped_qualities[allocation_index]
             for member in allocation.people:
                 for unused_person in list(unused_people):
                     replacement_team = tuple(
@@ -997,12 +1009,10 @@ def improve_allocations(
                     )
                     trial_sum = current_sum - old_quality + replacement_quality
                     if old_quality == current_min:
-                        trial_min = replacement_quality
-                        for quality_index, quality in enumerate(qualities):
-                            if quality_index == allocation_index:
-                                continue
-                            if quality < trial_min:
-                                trial_min = quality
+                        trial_min = min(
+                            replacement_quality,
+                            min_without_index[allocation_index],
+                        )
                     else:
                         trial_min = min(current_min, replacement_quality)
 
@@ -1028,6 +1038,14 @@ def improve_allocations(
             right = allocations[right_index]
             old_left_quality = qualities[left_index]
             old_right_quality = qualities[right_index]
+            other_min = min(
+                (
+                    quality
+                    for quality_index, quality in enumerate(qualities)
+                    if quality_index not in (left_index, right_index)
+                ),
+                default=float('inf'),
+            )
             for left_member in left.people:
                 for right_member in right.people:
                     swapped_left = tuple(
@@ -1059,8 +1077,8 @@ def improve_allocations(
 
                     trial_product = (
                         current_product
-                        / max(old_left_quality, 1e-12)
-                        / max(old_right_quality, 1e-12)
+                        / clamped_qualities[left_index]
+                        / clamped_qualities[right_index]
                         * max(rescored_left.quality, 1e-12)
                         * max(rescored_right.quality, 1e-12)
                     )
@@ -1071,12 +1089,11 @@ def improve_allocations(
                         + rescored_left.quality
                         + rescored_right.quality
                     )
-                    trial_min = min(rescored_left.quality, rescored_right.quality)
-                    for quality_index, quality in enumerate(qualities):
-                        if quality_index in (left_index, right_index):
-                            continue
-                        if quality < trial_min:
-                            trial_min = quality
+                    trial_min = min(
+                        other_min,
+                        rescored_left.quality,
+                        rescored_right.quality,
+                    )
 
                     if (trial_product, trial_min, trial_sum) > current_objective:
                         allocations = allocations.copy()
