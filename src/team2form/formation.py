@@ -595,7 +595,7 @@ def cached_score_team(
     normalize_weights: bool,
     score_cache: dict[ScoreCacheKey, ScoredAllocation],
 ) -> ScoredAllocation:
-    candidate_key = (task_id, tuple(id(person) for person in people))
+    candidate_key = (task_id, tuple(sorted(id(person) for person in people)))
     cached = score_cache.get(candidate_key)
     if cached is not None:
         return cached
