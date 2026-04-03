@@ -441,7 +441,7 @@ def candidate_combinations(
         if entry > ranked[0]:
             heapq.heapreplace(ranked, entry)
 
-    ranked.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    ranked.sort(reverse=True)
     return [combination for _, _, combination in ranked]
 
 
