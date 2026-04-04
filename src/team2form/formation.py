@@ -640,6 +640,7 @@ def _best_scored_shortlist_candidate_with_compat_pruning(
     all_equal = True
     scored_count = 0
 
+    bounded_candidates: list[tuple[float, int, tuple[Person, ...]]] = []
     combinations = itertools.combinations(shortlist, task.team_size)
     for index, candidate in enumerate(combinations):
         upper_bound = _compat_candidate_quality_upper_bound(
@@ -652,8 +653,19 @@ def _best_scored_shortlist_candidate_with_compat_pruning(
             social_cache=social_cache,
             social_preference_presence_cache=social_preference_presence_cache,
         )
+        bounded_candidates.append((upper_bound, index, candidate))
+
+    bounded_candidates.sort(
+        key=lambda entry: (
+            entry[0],
+            -entry[1],
+        ),
+        reverse=True,
+    )
+
+    for upper_bound, index, candidate in bounded_candidates:
         if best is not None and _objective_component_less(upper_bound, best_quality):
-            continue
+            break
 
         scored_allocation = cached_score_team(
             request,
