@@ -1,4 +1,5 @@
-- Design a semantics-preserving scored-candidate prefilter before `combination_scorer` using an admissible upper bound (must never drop potentially top-ranked combinations and must preserve current regression behavior).
+- Extend the new admissible greedy upper-bound pruning to additional safe paths (e.g. `build_scored_candidates` / exact-prep when `total_combinations <= max_candidate_teams`) while preserving current tie semantics.
+- Design a semantics-preserving admissible prefilter before expensive `combination_scorer` calls in scored-capped `candidate_combinations` (must never drop potentially top-ranked combos).
 - Explore a broader `candidate_combinations()` ranked-selection redesign (algorithmic, not micro-tweaks), since many heap/list/comprehension/key-canonicalization micro-optimizations have consistently regressed.
 - Investigate behavior-preserving reductions in `_compat_member_task_analysis` / `_compat_member_priority_order` that remove whole classes of work (not extra caching/branching), while keeping exact tie-breaking semantics.
 - Continue request-scoped immutable-data caching on the hottest score path only (task lookup/task preferences/team social-preference presence/resolved weights proved high leverage); avoid extending caches into colder paths unless profiling justifies it.
@@ -7,7 +8,7 @@ Pruned as stale/tried (do not retry without a materially different approach):
 - Per-shortlist or global caching layers for explicit social-preference pair checks.
 - Extra caching around `score_team` team-signature construction or object-id reuse maps.
 - Tiny method-binding/branch-level micro-optimizations in shortlist merge loops.
-- `heapq.nlargest` replacement for scored top-k candidate selection in `candidate_combinations`.
+- `heapq.nlargest` replacement for scored top-k candidate selection in `candidate_combinations` or shortlist pair-score aggregation.
 - Greedy uncapped shortcut that skips `shortlist_scorers` when combinations already fit under cap.
 - Local/per-call optimizations around `_compat_has_perfect_positive_matching` that only gate current logic without broader redesign.
 - Refactors that materialize extra per-member positive-index structures in compat analysis just to speed priority ordering.
@@ -23,7 +24,7 @@ Pruned as stale/tried (do not retry without a materially different approach):
 - Consolidating task/task-preference caches into one shared accessor layer.
 - Nested per-request map shape for resolved-weights cache.
 - `candidate_combinations` shortcut when `shortlist_size >= len(people)` (direct full shortlist bypass).
-- Request-scoped explicit-preference-id cache for score_team social-presence detection.
+- Request-scoped explicit social-preference-id caches for team social-presence detection.
 - Task-skill metadata cache layer (`task_skill_ids`/order map) in compat assignment helpers.
 - Inlining `_compat_member_task_values` inside `_assign_task_skills_compat`.
 - Extending singleton (`max_skills_per_member==1`) fast path to rescued/uncovered inline finalize logic.
@@ -35,8 +36,6 @@ Pruned as stale/tried (do not retry without a materially different approach):
 - Core-helper split to bypass `QualityBreakdown` construction in `score_team`.
 - Conditional `len>1` sort rewrites in `_compat_member_priority_order` key builders.
 - Nested per-member `_compat_member_task_values` cache shape (first-level map + per-task-id map).
-- `candidate_combinations` full-shortlist bypass when `shortlist_size >= len(people)`.
-- Request-scoped explicit social-preference id cache for team social-presence detection.
 - Nested team-component cache maps (`mode/default` outer maps) in score_team.
 - Bitmask-driven positive-task iteration in `_compat_member_priority_order`.
 - Tuple-membership social-preference detection on team-signature cache misses.
@@ -45,13 +44,15 @@ Pruned as stale/tried (do not retry without a materially different approach):
 - Inlining `individual_fit` invariants directly into `shortlist_scorers` scorer closure.
 - Streaming greedy best-candidate selection (single-pass max) replacing `scored_candidates` list + `max(...)`.
 - Integer position-set shortlist dedup/reconstruction in `candidate_combinations`.
-- Request-scoped similarity-index cache for cold task-ordering path (`task_hardness`).
+- Request-scoped similarity-index cache for cold task-ordering path (`task_hardness`) or extension into `individual_fit`.
 - Inlining mode dispatch in `calculate_team_quality_for_people` (bypass `assign_task_skills` wrapper).
 - Altering scored-cap candidate tie order to enable prefix-only greedy selection.
 - Reusing request-scoped task-preference cache inside `individual_fit`.
-- Request-scoped similarity-index cache extension into `individual_fit`.
-- `heapq.nlargest` replacement for shortlist pair-score top-k aggregation.
 - COMPAT-mode shortcut that skips similarity-index lookup construction in `task_hardness` / `individual_fit`.
 - `max_skills_per_member == 1` branch split in `_assign_task_skills_compat` to bypass per-member mask-loop scaffolding.
 - Precomputed `has_member_without_positive` flag plumbed from `_compat_member_task_analysis` into `_assign_task_skills_compat`.
-- Candidate-first-pass score reuse maps (`candidate -> ScoredAllocation`), including member-id keyed variants and closure-bound dictionary writes.
+- Candidate-first-pass score reuse maps (`candidate -> ScoredAllocation`), including member-id/object-id keyed variants and eager total<=cap scorer invocation.
+- Greedy bound-pruning variant that precomputes all bounds and sorts candidates by descending bound before scoring.
+- Early `_assign_task_skills_compat` fast-fail on `any(best_task_value <= 0)` that returns fallback assignments before member-priority/assignment loops.
+- Inlined nested-loop social-presence detection inside `_compat_candidate_quality_upper_bound` (replacing helper-based `any(...)`).
+- Admissible upper-bound objective pruning inside `improve_allocations` replacement/swap loops.

@@ -405,6 +405,7 @@ def candidate_combinations(
     scorer,
     alternate_scorers: list[Callable[[Person], float]] | None = None,
     combination_scorer: Callable[[tuple[Person, ...]], float] | None = None,
+    scored_combinations: list[tuple[tuple[Person, ...], float]] | None = None,
 ) -> Iterator[tuple[Person, ...]]: ...
 
 
@@ -418,6 +419,7 @@ def candidate_combinations(
     scorer,
     alternate_scorers: list[Callable[[Person], float]] | None = None,
     combination_scorer: Callable[[tuple[Person, ...]], float] | None = None,
+    scored_combinations: list[tuple[tuple[Person, ...], float]] | None = None,
 ) -> list[tuple[Person, ...]]: ...
 
 
@@ -430,6 +432,7 @@ def candidate_combinations(
     scorer,
     alternate_scorers: list[Callable[[Person], float]] | None = None,
     combination_scorer: Callable[[tuple[Person, ...]], float] | None = None,
+    scored_combinations: list[tuple[tuple[Person, ...], float]] | None = None,
 ) -> Iterable[tuple[Person, ...]]:
     validate_max_candidate_teams(max_candidate_teams)
     total = math.comb(len(people), team_size)
@@ -515,6 +518,11 @@ def candidate_combinations(
             heapq.heapreplace(ranked, entry)
 
     ranked.sort(reverse=True)
+    if scored_combinations is not None:
+        scored_combinations.extend(
+            (combination, score)
+            for score, _, combination in ranked
+        )
     return [combination for _, _, combination in ranked]
 
 
@@ -890,6 +898,7 @@ def greedy_allocations(
                 score_cache=score_cache,
             )
 
+        pre_scored_candidates: list[tuple[tuple[Person, ...], float]] = []
         candidates = candidate_combinations(
             people=remaining_people,
             team_size=task.team_size,
@@ -898,6 +907,7 @@ def greedy_allocations(
             scorer=member_scorer,
             alternate_scorers=alternate_scorers,
             combination_scorer=lambda candidate: scored_candidate(candidate).quality,
+            scored_combinations=pre_scored_candidates,
         )
         if request.init_random:
             candidates = list(candidates)
@@ -934,20 +944,33 @@ def greedy_allocations(
             if best is None:
                 best = scored_candidate(next(iter(candidates)))
         else:
-            scored_candidates = [
-                scored_candidate(candidate)
-                for candidate in candidates
-            ]
-            if request.init_random:
-                best = max(scored_candidates, key=lambda candidate: candidate.quality)
-            else:
-                best = max(
-                    scored_candidates,
-                    key=lambda candidate: (
-                        candidate.quality,
-                        tuple(sorted(member.id for member in candidate.people)),
+            if not request.init_random and pre_scored_candidates:
+                best_candidate_people, _best_quality = max(
+                    pre_scored_candidates,
+                    key=lambda entry: (
+                        entry[1],
+                        tuple(sorted(member.id for member in entry[0])),
                     ),
                 )
+                best = scored_candidate(best_candidate_people)
+            else:
+                scored_candidates = [
+                    scored_candidate(candidate)
+                    for candidate in candidates
+                ]
+                if request.init_random:
+                    best = max(
+                        scored_candidates,
+                        key=lambda candidate: candidate.quality,
+                    )
+                else:
+                    best = max(
+                        scored_candidates,
+                        key=lambda candidate: (
+                            candidate.quality,
+                            tuple(sorted(member.id for member in candidate.people)),
+                        ),
+                    )
         allocations.append(best)
         chosen_ids = {member.id for member in best.people}
         remaining_people = [
