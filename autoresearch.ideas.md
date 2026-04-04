@@ -1,9 +1,9 @@
 - Extend the new admissible greedy upper-bound pruning to additional safe paths (e.g. `build_scored_candidates` / exact-prep when `total_combinations <= max_candidate_teams`) while preserving current tie semantics.
-- Design a semantics-preserving admissible prefilter before expensive `combination_scorer` calls in scored-capped `candidate_combinations` (must never drop potentially top-ranked combos).
+- Generalize the kept COMPAT scored-shortlist cap+1 fast path (`_best_scored_shortlist_candidate_with_compat_pruning`) to larger overshoot cases only if top-k/tie semantics can be proven equivalent.
 - Explore a broader `candidate_combinations()` ranked-selection redesign (algorithmic, not micro-tweaks), since many heap/list/comprehension/key-canonicalization micro-optimizations have consistently regressed.
 - Investigate behavior-preserving reductions in `_compat_member_task_analysis` / `_compat_member_priority_order` that remove whole classes of work (not extra caching/branching), while keeping exact tie-breaking semantics.
 - Continue request-scoped immutable-data caching on the hottest score path only (task lookup/task preferences/team social-preference presence/resolved weights proved high leverage); avoid extending caches into colder paths unless profiling justifies it.
-- Re-validate commit `27eed6d` (lazy deterministic tie-key handling on top of `0f0bc65` and `b57e04f`) when host latency returns to the low-80ms band to confirm the gain is not regime-specific.
+- Re-validate commit `fc920ef` (cap+1 scored-shortlist pruning + bound-sorted upper-bound evaluation on top of prior keeps) when host latency returns to the low-80ms band to confirm the gain is not regime-specific.
 
 Pruned as stale/tried (do not retry without a materially different approach):
 - Per-shortlist or global caching layers for explicit social-preference pair checks.
@@ -79,3 +79,5 @@ Pruned as stale/tried (do not retry without a materially different approach):
 - Request/task-scoped precomputed compat member-task value maps threaded into scoring (`compat_member_task_values_by_member_id`) — neutral under current noise.
 - `improve_allocations` `if unused_people` guard to skip no-op replacement pass when no reserves exist — neutral/regressed.
 - `_compat_member_task_analysis` 4x4 specialized fast path (manual extraction/unrolled updates) — regressed.
+- `_compat_has_perfect_positive_matching` 4x4 bitmask-specialized fast path — neutral under current noise.
+- Request-order team-signature canonicalization with monotonic fast path (`person_id -> order index`) — neutral/regressed.

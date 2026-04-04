@@ -13,9 +13,11 @@ from .models import FormationRequest, Person, Task, TeamResult, TeamsResponse
 from .modes import Mode, WeightPreset
 from .scoring import (
     _calculate_team_quality_components_for_people,
+    _compat_member_task_values,
     _task_preference_score,
     assigned_people_from_assignments,
     coverage_for_person_and_task_skill,
+    geometric_mean,
     preference_lookup,
     similarity_lookup,
     team_personality_score,
@@ -604,15 +606,12 @@ def _best_scored_shortlist_candidate_with_compat_pruning(
 
     task_preferences = _request_task_preferences_by_task_id(request)[task.id]
     task_preference_default = 0.0 if not task_preferences else 0.5
-    task_skill_ids = {skill.id for skill in task.skills}
-    task_skill_upper_by_person_id = {
-        person.id: max(
-            (
-                skill.level
-                for skill in person.skills
-                if skill.id in task_skill_ids
-            ),
-            default=0.0,
+    task_skill_ids = tuple(skill.id for skill in task.skills)
+    task_skill_values_by_person_id = {
+        person.id: _compat_member_task_values(
+            person,
+            task.skills,
+            task_skill_ids=task_skill_ids,
         )
         for person in request.people
     }
@@ -647,7 +646,7 @@ def _best_scored_shortlist_candidate_with_compat_pruning(
             people=candidate,
             task_preferences=task_preferences,
             task_preference_default=task_preference_default,
-            task_skill_upper_by_person_id=task_skill_upper_by_person_id,
+            task_skill_values_by_person_id=task_skill_values_by_person_id,
             resolved_weights=resolved_weights,
             personality_cache=personality_cache,
             social_cache=social_cache,
@@ -926,7 +925,7 @@ def _compat_candidate_quality_upper_bound(
     people: tuple[Person, ...],
     task_preferences: dict[str, float],
     task_preference_default: float,
-    task_skill_upper_by_person_id: dict[str, float],
+    task_skill_values_by_person_id: dict[str, tuple[float, ...]],
     resolved_weights,
     personality_cache: dict[tuple[Mode, tuple[str, ...]], float],
     social_cache: dict[tuple[float, tuple[str, ...]], float],
@@ -965,11 +964,13 @@ def _compat_candidate_quality_upper_bound(
         compat_default=task_preference_default,
     )
 
-    skill_score_upper = 0.0
-    for member in people:
-        member_upper = task_skill_upper_by_person_id[member.id]
-        if member_upper > skill_score_upper:
-            skill_score_upper = member_upper
+    task_skill_rows = [task_skill_values_by_person_id[member.id] for member in people]
+    task_skill_bests = [0.0] * len(task_skill_rows[0])
+    for task_skill_values in task_skill_rows:
+        for task_index, value in enumerate(task_skill_values):
+            if value > task_skill_bests[task_index]:
+                task_skill_bests[task_index] = value
+    skill_score_upper = geometric_mean(task_skill_bests)
 
     return (
         resolved_weights.alpha * skill_score_upper
@@ -1084,7 +1085,7 @@ def greedy_allocations(
         )
         task_preferences: dict[str, float] = {}
         task_preference_default = 0.5
-        task_skill_upper_by_person_id: dict[str, float] = {}
+        task_skill_values_by_person_id: dict[str, tuple[float, ...]] = {}
         personality_cache: dict[tuple[Mode, tuple[str, ...]], float] = {}
         social_cache: dict[tuple[float, tuple[str, ...]], float] = {}
         social_preference_presence_cache: dict[tuple[str, ...], bool] = {}
@@ -1092,15 +1093,12 @@ def greedy_allocations(
         if use_upper_bound_pruning:
             task_preferences = _request_task_preferences_by_task_id(request)[task_id]
             task_preference_default = 0.0 if not task_preferences else 0.5
-            task_skill_ids = {skill.id for skill in task.skills}
-            task_skill_upper_by_person_id = {
-                person.id: max(
-                    (
-                        skill.level
-                        for skill in person.skills
-                        if skill.id in task_skill_ids
-                    ),
-                    default=0.0,
+            task_skill_ids = tuple(skill.id for skill in task.skills)
+            task_skill_values_by_person_id = {
+                person.id: _compat_member_task_values(
+                    person,
+                    task.skills,
+                    task_skill_ids=task_skill_ids,
                 )
                 for person in request.people
             }
@@ -1179,7 +1177,9 @@ def greedy_allocations(
                         people=candidate,
                         task_preferences=task_preferences,
                         task_preference_default=task_preference_default,
-                        task_skill_upper_by_person_id=task_skill_upper_by_person_id,
+                        task_skill_values_by_person_id=(
+                            task_skill_values_by_person_id
+                        ),
                         resolved_weights=resolved_weights,
                         personality_cache=personality_cache,
                         social_cache=social_cache,
