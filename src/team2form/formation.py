@@ -526,6 +526,188 @@ def candidate_combinations(
     return [combination for _, _, combination in ranked]
 
 
+
+def _best_scored_shortlist_candidate_with_compat_pruning(
+    *,
+    request: FormationRequest,
+    people: list[Person],
+    task: Task,
+    scorer,
+    alternate_scorers: list[Callable[[Person], float]] | None,
+    mode: Mode,
+    preset: WeightPreset | None,
+    normalize_weights: bool,
+    max_candidate_teams: int,
+    shortlist_padding: int,
+    score_cache: dict[ScoreCacheKey, ScoredAllocation],
+) -> ScoredAllocation | None:
+    if mode != Mode.COMPAT:
+        return None
+
+    total = math.comb(len(people), task.team_size)
+    if total <= max_candidate_teams:
+        return None
+
+    minimum_shortlist_size = task.team_size
+    while math.comb(minimum_shortlist_size, task.team_size) < max_candidate_teams:
+        minimum_shortlist_size += 1
+
+    target_size = min(
+        len(people),
+        max(
+            task.team_size + shortlist_padding,
+            task.team_size * 2,
+            minimum_shortlist_size,
+        ),
+    )
+
+    scored_combination_budget = max_candidate_teams * MAX_SCORED_COMBINATION_EXPANSION
+    shortlist_size = task.team_size
+    while (
+        shortlist_size < target_size
+        and math.comb(shortlist_size + 1, task.team_size)
+        <= scored_combination_budget
+    ):
+        shortlist_size += 1
+
+    shortlist: list[Person] = []
+    seen_ids: set[str] = set()
+    ranked_lists = [sorted(people, key=scorer, reverse=True)]
+    if alternate_scorers:
+        ranked_lists.extend(
+            sorted(people, key=alternate_scorer, reverse=True)
+            for alternate_scorer in alternate_scorers
+        )
+
+    positions = [0] * len(ranked_lists)
+    while len(shortlist) < shortlist_size:
+        added = False
+        for ranking_index, ranking in enumerate(ranked_lists):
+            while positions[ranking_index] < len(ranking):
+                person = ranking[positions[ranking_index]]
+                positions[ranking_index] += 1
+                if person.id in seen_ids:
+                    continue
+                seen_ids.add(person.id)
+                shortlist.append(person)
+                added = True
+                break
+            if len(shortlist) >= shortlist_size:
+                break
+        if not added:
+            break
+
+    shortlist = [person for person in people if person.id in seen_ids]
+    shortlist_total = math.comb(len(shortlist), task.team_size)
+    if shortlist_total != max_candidate_teams + 1:
+        return None
+
+    task_preferences = _request_task_preferences_by_task_id(request)[task.id]
+    task_preference_default = 0.0 if not task_preferences else 0.5
+    task_skill_ids = {skill.id for skill in task.skills}
+    task_skill_upper_by_person_id = {
+        person.id: max(
+            (
+                skill.level
+                for skill in person.skills
+                if skill.id in task_skill_ids
+            ),
+            default=0.0,
+        )
+        for person in request.people
+    }
+    (
+        personality_cache,
+        social_cache,
+        social_preference_presence_cache,
+    ) = _request_team_component_caches(request)
+    resolved_weights = _request_resolved_weights(
+        request,
+        mode=mode,
+        preset=preset,
+        normalize_weights=normalize_weights,
+    )
+
+    best: ScoredAllocation | None = None
+    best_quality = float('-inf')
+    best_ids: tuple[str, ...] | None = None
+
+    best_first_k: ScoredAllocation | None = None
+    best_first_k_quality = float('-inf')
+    best_first_k_ids: tuple[str, ...] | None = None
+
+    first_quality: float | None = None
+    all_equal = True
+    scored_count = 0
+
+    combinations = itertools.combinations(shortlist, task.team_size)
+    for index, candidate in enumerate(combinations):
+        upper_bound = _compat_candidate_quality_upper_bound(
+            people=candidate,
+            task_preferences=task_preferences,
+            task_preference_default=task_preference_default,
+            task_skill_upper_by_person_id=task_skill_upper_by_person_id,
+            resolved_weights=resolved_weights,
+            personality_cache=personality_cache,
+            social_cache=social_cache,
+            social_preference_presence_cache=social_preference_presence_cache,
+        )
+        if best is not None and _objective_component_less(upper_bound, best_quality):
+            continue
+
+        scored_allocation = cached_score_team(
+            request,
+            task_id=task.id,
+            people=candidate,
+            mode=mode,
+            preset=preset,
+            normalize_weights=normalize_weights,
+            score_cache=score_cache,
+        )
+        scored_count += 1
+
+        quality = scored_allocation.quality
+        if first_quality is None:
+            first_quality = quality
+        elif not _objective_component_close(quality, first_quality):
+            all_equal = False
+
+        if best is None or quality > best_quality:
+            best = scored_allocation
+            best_quality = quality
+            best_ids = None
+        elif quality == best_quality:
+            candidate_ids = tuple(sorted(member.id for member in candidate))
+            if best_ids is None and best is not None:
+                best_ids = tuple(sorted(member.id for member in best.people))
+            if best_ids is None or candidate_ids > best_ids:
+                best = scored_allocation
+                best_ids = candidate_ids
+
+        if index < max_candidate_teams:
+            if best_first_k is None or quality > best_first_k_quality:
+                best_first_k = scored_allocation
+                best_first_k_quality = quality
+                best_first_k_ids = None
+            elif quality == best_first_k_quality:
+                candidate_ids = tuple(sorted(member.id for member in candidate))
+                if best_first_k_ids is None and best_first_k is not None:
+                    best_first_k_ids = tuple(
+                        sorted(member.id for member in best_first_k.people)
+                    )
+                if best_first_k_ids is None or candidate_ids > best_first_k_ids:
+                    best_first_k = scored_allocation
+                    best_first_k_ids = candidate_ids
+
+    if best is None:
+        return None
+
+    if scored_count == shortlist_total and all_equal and best_first_k is not None:
+        return best_first_k
+    return best
+
+
+
 def allocation_objective(
     allocations: list[ScoredAllocation],
 ) -> tuple[float, float, float]:
@@ -937,121 +1119,151 @@ def greedy_allocations(
                 score_cache=score_cache,
             )
 
-        pre_scored_candidates: list[tuple[tuple[Person, ...], float]] = []
-        candidates = candidate_combinations(
-            people=remaining_people,
-            team_size=task.team_size,
-            max_candidate_teams=max_candidate_teams,
-            shortlist_padding=shortlist_padding,
-            scorer=member_scorer,
-            alternate_scorers=alternate_scorers,
-            combination_scorer=lambda candidate: scored_candidate(candidate).quality,
-            scored_combinations=pre_scored_candidates,
-        )
-        if request.init_random:
-            candidates = list(candidates)
-            randomizer.shuffle(candidates)
+        best: ScoredAllocation | None = None
+        if (
+            not request.init_random
+            and mode == Mode.COMPAT
+            and max_candidate_teams is not None
+            and task_total > max_candidate_teams
+            and score_team is _ORIGINAL_SCORE_TEAM
+        ):
+            best = _best_scored_shortlist_candidate_with_compat_pruning(
+                request=request,
+                people=remaining_people,
+                task=task,
+                scorer=member_scorer,
+                alternate_scorers=alternate_scorers,
+                mode=mode,
+                preset=preset,
+                normalize_weights=normalize_weights,
+                max_candidate_teams=max_candidate_teams,
+                shortlist_padding=shortlist_padding,
+                score_cache=score_cache,
+            )
 
-        if use_upper_bound_pruning and resolved_weights is not None:
-            best: ScoredAllocation | None = None
-            best_quality = float('-inf')
-            best_ids: tuple[str, ...] | None = None
-            for candidate in candidates:
-                upper_bound = _compat_candidate_quality_upper_bound(
-                    people=candidate,
-                    task_preferences=task_preferences,
-                    task_preference_default=task_preference_default,
-                    task_skill_upper_by_person_id=task_skill_upper_by_person_id,
-                    resolved_weights=resolved_weights,
-                    personality_cache=personality_cache,
-                    social_cache=social_cache,
-                    social_preference_presence_cache=social_preference_presence_cache,
-                )
-                if (
-                    best is not None
-                    and _objective_component_less(upper_bound, best_quality)
-                ):
-                    continue
+        if best is None:
+            pre_scored_candidates: list[tuple[tuple[Person, ...], float]] = []
+            candidates = candidate_combinations(
+                people=remaining_people,
+                team_size=task.team_size,
+                max_candidate_teams=max_candidate_teams,
+                shortlist_padding=shortlist_padding,
+                scorer=member_scorer,
+                alternate_scorers=alternate_scorers,
+                combination_scorer=(
+                    lambda candidate: scored_candidate(candidate).quality
+                ),
+                scored_combinations=pre_scored_candidates,
+            )
+            if request.init_random:
+                candidates = list(candidates)
+                randomizer.shuffle(candidates)
 
-                scored_allocation = scored_candidate(candidate)
-                quality = scored_allocation.quality
-                if best is None or quality > best_quality:
-                    best = scored_allocation
-                    best_quality = quality
-                    best_ids = None
-                    continue
-                if quality == best_quality:
-                    candidate_ids = tuple(
-                        sorted(member.id for member in scored_allocation.people)
-                    )
-                    if best_ids is None and best is not None:
-                        best_ids = tuple(sorted(member.id for member in best.people))
-                    if best_ids is None or candidate_ids > best_ids:
-                        best = scored_allocation
-                        best_ids = candidate_ids
-
-            if best is None:
-                best = scored_candidate(next(iter(candidates)))
-        else:
-            if not request.init_random and pre_scored_candidates:
-                best_candidate_people: tuple[Person, ...] | None = None
+            if use_upper_bound_pruning and resolved_weights is not None:
                 best_quality = float('-inf')
                 best_ids: tuple[str, ...] | None = None
-                for candidate_people, quality in pre_scored_candidates:
-                    if best_candidate_people is None or quality > best_quality:
-                        best_candidate_people = candidate_people
+                for candidate in candidates:
+                    upper_bound = _compat_candidate_quality_upper_bound(
+                        people=candidate,
+                        task_preferences=task_preferences,
+                        task_preference_default=task_preference_default,
+                        task_skill_upper_by_person_id=task_skill_upper_by_person_id,
+                        resolved_weights=resolved_weights,
+                        personality_cache=personality_cache,
+                        social_cache=social_cache,
+                        social_preference_presence_cache=(
+                            social_preference_presence_cache
+                        ),
+                    )
+                    if (
+                        best is not None
+                        and _objective_component_less(upper_bound, best_quality)
+                    ):
+                        continue
+
+                    scored_allocation = scored_candidate(candidate)
+                    quality = scored_allocation.quality
+                    if best is None or quality > best_quality:
+                        best = scored_allocation
                         best_quality = quality
                         best_ids = None
                         continue
                     if quality == best_quality:
                         candidate_ids = tuple(
-                            sorted(member.id for member in candidate_people)
+                            sorted(member.id for member in scored_allocation.people)
                         )
-                        if best_ids is None and best_candidate_people is not None:
+                        if best_ids is None and best is not None:
                             best_ids = tuple(
-                                sorted(
-                                    member.id
-                                    for member in best_candidate_people
-                                )
+                                sorted(member.id for member in best.people)
                             )
                         if best_ids is None or candidate_ids > best_ids:
-                            best_candidate_people = candidate_people
+                            best = scored_allocation
                             best_ids = candidate_ids
 
-                assert best_candidate_people is not None
-                best = scored_candidate(best_candidate_people)
+                if best is None:
+                    best = scored_candidate(next(iter(candidates)))
             else:
-                scored_candidates = [
-                    scored_candidate(candidate)
-                    for candidate in candidates
-                ]
-                if request.init_random:
-                    best = max(
-                        scored_candidates,
-                        key=lambda candidate: candidate.quality,
-                    )
-                else:
-                    best = scored_candidates[0]
-                    best_quality = best.quality
+                if not request.init_random and pre_scored_candidates:
+                    best_candidate_people: tuple[Person, ...] | None = None
+                    best_quality = float('-inf')
                     best_ids: tuple[str, ...] | None = None
-                    for candidate in scored_candidates[1:]:
-                        quality = candidate.quality
-                        if quality > best_quality:
-                            best = candidate
+                    for candidate_people, quality in pre_scored_candidates:
+                        if best_candidate_people is None or quality > best_quality:
+                            best_candidate_people = candidate_people
                             best_quality = quality
                             best_ids = None
                             continue
                         if quality == best_quality:
                             candidate_ids = tuple(
-                                sorted(member.id for member in candidate.people)
+                                sorted(member.id for member in candidate_people)
                             )
-                            if best_ids is None:
+                            if best_ids is None and best_candidate_people is not None:
                                 best_ids = tuple(
-                                    sorted(member.id for member in best.people)
+                                    sorted(
+                                        member.id
+                                        for member in best_candidate_people
+                                    )
                                 )
-                            if candidate_ids > best_ids:
-                                best = candidate
+                            if best_ids is None or candidate_ids > best_ids:
+                                best_candidate_people = candidate_people
                                 best_ids = candidate_ids
+
+                    assert best_candidate_people is not None
+                    best = scored_candidate(best_candidate_people)
+                else:
+                    scored_candidates = [
+                        scored_candidate(candidate)
+                        for candidate in candidates
+                    ]
+                    if request.init_random:
+                        best = max(
+                            scored_candidates,
+                            key=lambda candidate: candidate.quality,
+                        )
+                    else:
+                        best = scored_candidates[0]
+                        best_quality = best.quality
+                        best_ids = None
+                        for candidate in scored_candidates[1:]:
+                            quality = candidate.quality
+                            if quality > best_quality:
+                                best = candidate
+                                best_quality = quality
+                                best_ids = None
+                                continue
+                            if quality == best_quality:
+                                candidate_ids = tuple(
+                                    sorted(member.id for member in candidate.people)
+                                )
+                                if best_ids is None:
+                                    best_ids = tuple(
+                                        sorted(member.id for member in best.people)
+                                    )
+                                if candidate_ids > best_ids:
+                                    best = candidate
+                                    best_ids = candidate_ids
+
+        assert best is not None
         allocations.append(best)
         chosen_ids = {member.id for member in best.people}
         remaining_people = [

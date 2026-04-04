@@ -3,7 +3,7 @@
 - Explore a broader `candidate_combinations()` ranked-selection redesign (algorithmic, not micro-tweaks), since many heap/list/comprehension/key-canonicalization micro-optimizations have consistently regressed.
 - Investigate behavior-preserving reductions in `_compat_member_task_analysis` / `_compat_member_priority_order` that remove whole classes of work (not extra caching/branching), while keeping exact tie-breaking semantics.
 - Continue request-scoped immutable-data caching on the hottest score path only (task lookup/task preferences/team social-preference presence/resolved weights proved high leverage); avoid extending caches into colder paths unless profiling justifies it.
-- Re-validate commit `b57e04f` (score-cache/team-signature canonicalization reuse on top of `b33001a`) when host latency returns to the low-80ms band to confirm the gain is not regime-specific.
+- Re-validate commit `27eed6d` (lazy deterministic tie-key handling on top of `0f0bc65` and `b57e04f`) when host latency returns to the low-80ms band to confirm the gain is not regime-specific.
 
 Pruned as stale/tried (do not retry without a materially different approach):
 - Per-shortlist or global caching layers for explicit social-preference pair checks.
@@ -74,3 +74,8 @@ Pruned as stale/tried (do not retry without a materially different approach):
 - Thread `task_skill_ids` through `_compat_fill_uncovered_assignments_single_capacity` to avoid `task_skills[index].id` lookups.
 - Team-component cache signature switch from sorted member-id strings to sorted member object identities.
 - Precomputed per-request COMPAT personality-component map for upper-bound helper (`team_personality_score` replacement) — neutral-to-worse under current workload.
+- Greedy quality-only scoring path (`include_assignments=False` + `cached_score_team_quality`) with monkeypatch-safe fallback; added complexity but no net win after safeguards.
+- `_compat_member_priority_order` rich-key tuple-materialization removal (typed tuple task-value matrices) — regressed.
+- Request/task-scoped precomputed compat member-task value maps threaded into scoring (`compat_member_task_values_by_member_id`) — neutral under current noise.
+- `improve_allocations` `if unused_people` guard to skip no-op replacement pass when no reserves exist — neutral/regressed.
+- `_compat_member_task_analysis` 4x4 specialized fast path (manual extraction/unrolled updates) — regressed.
