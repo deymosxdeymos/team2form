@@ -12,6 +12,7 @@ from typing import overload
 from .models import FormationRequest, Person, Task, TeamResult, TeamsResponse
 from .modes import Mode, WeightPreset
 from .scoring import (
+    _task_preference_score,
     assigned_people_from_assignments,
     calculate_team_quality_for_people,
     coverage_for_person_and_task_skill,
@@ -699,6 +700,56 @@ def cached_score_team(
     return scored
 
 
+def _compat_candidate_quality_upper_bound(
+    *,
+    people: tuple[Person, ...],
+    task_preferences: dict[str, float],
+    task_preference_default: float,
+    resolved_weights,
+    personality_cache: dict[tuple[Mode, tuple[str, ...]], float],
+    social_cache: dict[tuple[float, tuple[str, ...]], float],
+    social_preference_presence_cache: dict[tuple[str, ...], bool],
+) -> float:
+    team_signature = tuple(sorted(member.id for member in people))
+
+    personality_cache_key = (Mode.COMPAT, team_signature)
+    personality_score = personality_cache.get(personality_cache_key)
+    if personality_score is None:
+        personality_score = team_personality_score(people, mode=Mode.COMPAT)
+        personality_cache[personality_cache_key] = personality_score
+
+    has_team_social_preferences = social_preference_presence_cache.get(team_signature)
+    if has_team_social_preferences is None:
+        teammate_ids = {member.id for member in people}
+        has_team_social_preferences = any(
+            has_explicit_social_preferences(member, teammate_ids)
+            for member in people
+        )
+        social_preference_presence_cache[team_signature] = (
+            has_team_social_preferences
+        )
+
+    social_score_upper = 0.0
+    if has_team_social_preferences:
+        social_cache_key = (0.5, team_signature)
+        social_score_upper = social_cache.get(social_cache_key)
+        if social_score_upper is None:
+            social_score_upper = team_social_score(people, compat_default=0.5)
+            social_cache[social_cache_key] = social_score_upper
+
+    task_preference_score = _task_preference_score(
+        people,
+        task_preferences=task_preferences,
+        compat_default=task_preference_default,
+    )
+
+    return (
+        resolved_weights.alpha
+        + resolved_weights.beta * personality_score
+        + resolved_weights.gamma * task_preference_score
+        + resolved_weights.delta * social_score_upper
+    )
+
 
 def build_scored_candidates(
     request: FormationRequest,
@@ -795,6 +846,35 @@ def greedy_allocations(
             preset=preset,
             normalize_weights=normalize_weights,
         )
+
+        task_total = math.comb(len(remaining_people), task.team_size)
+        use_upper_bound_pruning = (
+            not request.init_random
+            and mode == Mode.COMPAT
+            and max_candidate_teams is not None
+            and task_total <= max_candidate_teams
+        )
+        task_preferences: dict[str, float] = {}
+        task_preference_default = 0.5
+        personality_cache: dict[tuple[Mode, tuple[str, ...]], float] = {}
+        social_cache: dict[tuple[float, tuple[str, ...]], float] = {}
+        social_preference_presence_cache: dict[tuple[str, ...], bool] = {}
+        resolved_weights = None
+        if use_upper_bound_pruning:
+            task_preferences = _request_task_preferences_by_task_id(request)[task_id]
+            task_preference_default = 0.0 if not task_preferences else 0.5
+            (
+                personality_cache,
+                social_cache,
+                social_preference_presence_cache,
+            ) = _request_team_component_caches(request)
+            resolved_weights = _request_resolved_weights(
+                request,
+                mode=mode,
+                preset=preset,
+                normalize_weights=normalize_weights,
+            )
+
         def scored_candidate(
             candidate: tuple[Person, ...],
             *,
@@ -823,17 +903,51 @@ def greedy_allocations(
             candidates = list(candidates)
             randomizer.shuffle(candidates)
 
-        scored_candidates = [scored_candidate(candidate) for candidate in candidates]
-        if request.init_random:
-            best = max(scored_candidates, key=lambda candidate: candidate.quality)
+        if use_upper_bound_pruning and resolved_weights is not None:
+            best: ScoredAllocation | None = None
+            best_key: tuple[float, tuple[str, ...]] | None = None
+            for candidate in candidates:
+                upper_bound = _compat_candidate_quality_upper_bound(
+                    people=candidate,
+                    task_preferences=task_preferences,
+                    task_preference_default=task_preference_default,
+                    resolved_weights=resolved_weights,
+                    personality_cache=personality_cache,
+                    social_cache=social_cache,
+                    social_preference_presence_cache=social_preference_presence_cache,
+                )
+                if (
+                    best is not None
+                    and _objective_component_less(upper_bound, best.quality)
+                ):
+                    continue
+
+                scored_allocation = scored_candidate(candidate)
+                candidate_key = (
+                    scored_allocation.quality,
+                    tuple(sorted(member.id for member in scored_allocation.people)),
+                )
+                if best_key is None or candidate_key > best_key:
+                    best = scored_allocation
+                    best_key = candidate_key
+
+            if best is None:
+                best = scored_candidate(next(iter(candidates)))
         else:
-            best = max(
-                scored_candidates,
-                key=lambda candidate: (
-                    candidate.quality,
-                    tuple(sorted(member.id for member in candidate.people)),
-                ),
-            )
+            scored_candidates = [
+                scored_candidate(candidate)
+                for candidate in candidates
+            ]
+            if request.init_random:
+                best = max(scored_candidates, key=lambda candidate: candidate.quality)
+            else:
+                best = max(
+                    scored_candidates,
+                    key=lambda candidate: (
+                        candidate.quality,
+                        tuple(sorted(member.id for member in candidate.people)),
+                    ),
+                )
         allocations.append(best)
         chosen_ids = {member.id for member in best.people}
         remaining_people = [

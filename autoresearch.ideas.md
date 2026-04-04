@@ -20,3 +20,38 @@ Pruned as stale/tried (do not retry without a materially different approach):
 - Disabling alternate shortlist scorers in scored capped candidate generation.
 - Removing explicit shortlist list appends (count-only tracking) before input-order reconstruction in `candidate_combinations`.
 - Fixed-size (`len(team)==4`) unrolled fast path for `_task_preference_score`.
+- Consolidating task/task-preference caches into one shared accessor layer.
+- Nested per-request map shape for resolved-weights cache.
+- `candidate_combinations` shortcut when `shortlist_size >= len(people)` (direct full shortlist bypass).
+- Request-scoped explicit-preference-id cache for score_team social-presence detection.
+- Task-skill metadata cache layer (`task_skill_ids`/order map) in compat assignment helpers.
+- Inlining `_compat_member_task_values` inside `_assign_task_skills_compat`.
+- Extending singleton (`max_skills_per_member==1`) fast path to rescued/uncovered inline finalize logic.
+- Extending request-scoped caches into colder paths (`individual_fit`, `task_hardness`) without hotspot evidence.
+- `_compat_member_priority_order` local-binding/closure micro-tweaks.
+- Inline `_compat_fill_uncovered_assignments` emulation for rescued singleton-capacity paths.
+- Integer team-signature keys (request person-order indices) for team-component caches.
+- Threading cached per-task `task_skill_ids` through quality/assignment APIs.
+- Core-helper split to bypass `QualityBreakdown` construction in `score_team`.
+- Conditional `len>1` sort rewrites in `_compat_member_priority_order` key builders.
+- Nested per-member `_compat_member_task_values` cache shape (first-level map + per-task-id map).
+- `candidate_combinations` full-shortlist bypass when `shortlist_size >= len(people)`.
+- Request-scoped explicit social-preference id cache for team social-presence detection.
+- Nested team-component cache maps (`mode/default` outer maps) in score_team.
+- Bitmask-driven positive-task iteration in `_compat_member_priority_order`.
+- Tuple-membership social-preference detection on team-signature cache misses.
+- Position-map + tuple-slice replacement construction in `improve_allocations`.
+- `_compat_fill_uncovered_assignments` signature extension with caller-provided bitmask metadata.
+- Inlining `individual_fit` invariants directly into `shortlist_scorers` scorer closure.
+- Streaming greedy best-candidate selection (single-pass max) replacing `scored_candidates` list + `max(...)`.
+- Integer position-set shortlist dedup/reconstruction in `candidate_combinations`.
+- Request-scoped similarity-index cache for cold task-ordering path (`task_hardness`).
+- Inlining mode dispatch in `calculate_team_quality_for_people` (bypass `assign_task_skills` wrapper).
+- Altering scored-cap candidate tie order to enable prefix-only greedy selection.
+- Reusing request-scoped task-preference cache inside `individual_fit`.
+- Request-scoped similarity-index cache extension into `individual_fit`.
+- `heapq.nlargest` replacement for shortlist pair-score top-k aggregation.
+- COMPAT-mode shortcut that skips similarity-index lookup construction in `task_hardness` / `individual_fit`.
+- `max_skills_per_member == 1` branch split in `_assign_task_skills_compat` to bypass per-member mask-loop scaffolding.
+- Precomputed `has_member_without_positive` flag plumbed from `_compat_member_task_analysis` into `_assign_task_skills_compat`.
+- Candidate-first-pass score reuse maps (`candidate -> ScoredAllocation`), including member-id keyed variants and closure-bound dictionary writes.
