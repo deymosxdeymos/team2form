@@ -3,7 +3,7 @@
 - Explore a broader `candidate_combinations()` ranked-selection redesign (algorithmic, not micro-tweaks), since many heap/list/comprehension/key-canonicalization micro-optimizations have consistently regressed.
 - Investigate behavior-preserving reductions in `_compat_member_task_analysis` / `_compat_member_priority_order` that remove whole classes of work (not extra caching/branching), while keeping exact tie-breaking semantics.
 - Continue request-scoped immutable-data caching on the hottest score path only (task lookup/task preferences/team social-preference presence/resolved weights proved high leverage); avoid extending caches into colder paths unless profiling justifies it.
-- Re-evaluate tighter greedy skill upper bounds (e.g. max matching task-skill level per candidate) with paired A/B reruns once host latency returns to the low-80ms band; simulation suggests materially better pruning but recent high-latency runs were inconclusive.
+- Re-validate commit `b33001a` (tightened greedy skill upper bound + rich-priority key caching) when host latency returns to the low-80ms band to confirm the gain is not regime-specific.
 
 Pruned as stale/tried (do not retry without a materially different approach):
 - Per-shortlist or global caching layers for explicit social-preference pair checks.
@@ -65,12 +65,11 @@ Pruned as stale/tried (do not retry without a materially different approach):
 - Branch-local key-function definition layout in `_compat_member_priority_order` (define only needed branch key each call).
 - `_geometric_mean_two_lists` specialization replacing `geometric_mean([*matched_values, *rescued_values])` in compat finalize.
 - Direct bit-iteration assignment in `_compat_fill_uncovered_assignments_single_capacity` (remove `uncovered_skill_ids` list materialization).
-- Greedy admissible bound variant replacing skill term `alpha*1.0` with `alpha*max_matching_skill_level` per candidate.
 - `candidate_combinations` scored-path small-total branch (`C(shortlist, team_size) <= 2*cap`) using full score+sort+slice instead of heap top-k maintenance.
 - `cached_score_team` canonical key fast path that skips sorting when 4-member object ids are already monotonic.
 - Precomputed per-task per-person logged task preferences for greedy upper-bound helper (replace `_task_preference_score` calls with summed logs).
 - `rich_first_priority_key` tiny stable insertion-sort (replace `sorted(..., reverse=True)` for <=4 positive tasks).
 - `_compat_member_task_analysis` member-major traversal rewrite (single pass over member rows instead of task-major loops).
-- Cross-call rich-priority key caching in `_compat_member_priority_order` keyed by `(task_skill_ids, task_capable_counts, member_task_values)`.
 - Inline combined matched+rescued geometric-mean computation in `_assign_task_skills_compat` (replace `geometric_mean([*matched_values, *rescued_values])`).
 - Thread `task_skill_ids` through `_compat_fill_uncovered_assignments_single_capacity` to avoid `task_skills[index].id` lookups.
+- Team-component cache signature switch from sorted member-id strings to sorted member object identities.

@@ -36,7 +36,7 @@ class TeamFormationError(ValueError):
     pass
 
 
-ScoreCacheKey = tuple[str, tuple[int, ...]]
+ScoreCacheKey = tuple[str, tuple[str, ...]]
 
 DEFAULT_MAX_CANDIDATE_TEAMS = 10_000
 MAX_SCORED_COMBINATION_EXPANSION = 4
@@ -592,9 +592,11 @@ def score_team(
     mode: Mode,
     preset: WeightPreset | None,
     normalize_weights: bool,
+    team_signature: tuple[str, ...] | None = None,
 ) -> ScoredAllocation:
     task = _request_tasks_by_id(request)[task_id]
-    team_signature = tuple(sorted(member.id for member in people))
+    if team_signature is None:
+        team_signature = tuple(sorted(member.id for member in people))
     (
         personality_cache,
         social_cache,
@@ -682,6 +684,10 @@ def score_team(
 
 
 
+_ORIGINAL_SCORE_TEAM = score_team
+
+
+
 def cached_score_team(
     request: FormationRequest,
     *,
@@ -692,18 +698,31 @@ def cached_score_team(
     normalize_weights: bool,
     score_cache: dict[ScoreCacheKey, ScoredAllocation],
 ) -> ScoredAllocation:
-    candidate_key = (task_id, tuple(sorted(id(person) for person in people)))
+    team_signature = tuple(sorted(person.id for person in people))
+    candidate_key = (task_id, team_signature)
     cached = score_cache.get(candidate_key)
     if cached is not None:
         return cached
-    scored = score_team(
-        request,
-        task_id=task_id,
-        people=people,
-        mode=mode,
-        preset=preset,
-        normalize_weights=normalize_weights,
-    )
+
+    if score_team is _ORIGINAL_SCORE_TEAM:
+        scored = score_team(
+            request,
+            task_id=task_id,
+            people=people,
+            mode=mode,
+            preset=preset,
+            normalize_weights=normalize_weights,
+            team_signature=team_signature,
+        )
+    else:
+        scored = score_team(
+            request,
+            task_id=task_id,
+            people=people,
+            mode=mode,
+            preset=preset,
+            normalize_weights=normalize_weights,
+        )
     score_cache[candidate_key] = scored
     return scored
 
