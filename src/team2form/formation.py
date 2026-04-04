@@ -606,6 +606,14 @@ def _best_scored_shortlist_candidate_with_compat_pruning(
 
     task_preferences = _request_task_preferences_by_task_id(request)[task.id]
     task_preference_default = 0.0 if not task_preferences else 0.5
+    task_preference_logs_by_person_id: dict[str, float | None] = {}
+    for person in request.people:
+        task_preference = task_preferences.get(person.id, task_preference_default)
+        if task_preference <= 0:
+            task_preference_logs_by_person_id[person.id] = None
+            continue
+        task_preference_logs_by_person_id[person.id] = math.log(task_preference)
+
     task_skill_ids = tuple(skill.id for skill in task.skills)
     task_skill_values_by_person_id = {
         person.id: _compat_member_task_values(
@@ -646,6 +654,9 @@ def _best_scored_shortlist_candidate_with_compat_pruning(
             people=candidate,
             task_preferences=task_preferences,
             task_preference_default=task_preference_default,
+            task_preference_logs_by_person_id=(
+                task_preference_logs_by_person_id
+            ),
             task_skill_values_by_person_id=task_skill_values_by_person_id,
             resolved_weights=resolved_weights,
             personality_cache=personality_cache,
@@ -925,6 +936,7 @@ def _compat_candidate_quality_upper_bound(
     people: tuple[Person, ...],
     task_preferences: dict[str, float],
     task_preference_default: float,
+    task_preference_logs_by_person_id: dict[str, float | None] | None,
     task_skill_values_by_person_id: dict[str, tuple[float, ...]],
     resolved_weights,
     personality_cache: dict[tuple[Mode, tuple[str, ...]], float],
@@ -958,11 +970,24 @@ def _compat_candidate_quality_upper_bound(
             social_score_upper = team_social_score(people, compat_default=0.5)
             social_cache[social_cache_key] = social_score_upper
 
-    task_preference_score = _task_preference_score(
-        people,
-        task_preferences=task_preferences,
-        compat_default=task_preference_default,
-    )
+    if task_preference_logs_by_person_id is None:
+        task_preference_score = _task_preference_score(
+            people,
+            task_preferences=task_preferences,
+            compat_default=task_preference_default,
+        )
+    else:
+        task_preference_log_sum = 0.0
+        for member in people:
+            task_preference_log = task_preference_logs_by_person_id[member.id]
+            if task_preference_log is None:
+                task_preference_score = 0.0
+                break
+            task_preference_log_sum += task_preference_log
+        else:
+            task_preference_score = math.exp(
+                task_preference_log_sum / len(people)
+            )
 
     task_skill_rows = [task_skill_values_by_person_id[member.id] for member in people]
     task_skill_bests = [0.0] * len(task_skill_rows[0])
@@ -1085,6 +1110,7 @@ def greedy_allocations(
         )
         task_preferences: dict[str, float] = {}
         task_preference_default = 0.5
+        task_preference_logs_by_person_id: dict[str, float | None] | None = None
         task_skill_values_by_person_id: dict[str, tuple[float, ...]] = {}
         personality_cache: dict[tuple[Mode, tuple[str, ...]], float] = {}
         social_cache: dict[tuple[float, tuple[str, ...]], float] = {}
@@ -1093,6 +1119,19 @@ def greedy_allocations(
         if use_upper_bound_pruning:
             task_preferences = _request_task_preferences_by_task_id(request)[task_id]
             task_preference_default = 0.0 if not task_preferences else 0.5
+            task_preference_logs_by_person_id = {}
+            for person in request.people:
+                task_preference = task_preferences.get(
+                    person.id,
+                    task_preference_default,
+                )
+                if task_preference <= 0:
+                    task_preference_logs_by_person_id[person.id] = None
+                    continue
+                task_preference_logs_by_person_id[person.id] = math.log(
+                    task_preference
+                )
+
             task_skill_ids = tuple(skill.id for skill in task.skills)
             task_skill_values_by_person_id = {
                 person.id: _compat_member_task_values(
@@ -1177,6 +1216,9 @@ def greedy_allocations(
                         people=candidate,
                         task_preferences=task_preferences,
                         task_preference_default=task_preference_default,
+                        task_preference_logs_by_person_id=(
+                            task_preference_logs_by_person_id
+                        ),
                         task_skill_values_by_person_id=(
                             task_skill_values_by_person_id
                         ),
