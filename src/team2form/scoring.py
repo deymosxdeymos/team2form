@@ -430,6 +430,33 @@ def _compat_sort_member_assignments(
     return assignments
 
 
+def _compat_fill_uncovered_assignments_single_capacity(
+    task_skills: Sequence[TaskSkill],
+    assignments: dict[str, list[str]],
+    *,
+    uncovered_mask: int,
+) -> dict[str, list[str]]:
+    if uncovered_mask == 0:
+        return assignments
+
+    uncovered_skill_ids: list[str] = []
+    while uncovered_mask:
+        task_bit = uncovered_mask & -uncovered_mask
+        task_index = task_bit.bit_length() - 1
+        uncovered_skill_ids.append(task_skills[task_index].id)
+        uncovered_mask ^= task_bit
+
+    next_skill_index = 0
+    for member_id, skill_ids in assignments.items():
+        if skill_ids or next_skill_index >= len(uncovered_skill_ids):
+            continue
+        assignments[member_id] = [uncovered_skill_ids[next_skill_index]]
+        next_skill_index += 1
+
+    return assignments
+
+
+
 def _compat_fill_uncovered_assignments(
     task_skills: Sequence[TaskSkill],
     assignments: dict[str, list[str]],
@@ -626,12 +653,22 @@ def _assign_task_skills_compat(
             matched_values.append(task_values[best_task_index])
 
     rescued_values: list[float] = []
-    uncovered_mask = full_mask ^ covered_mask
+    initial_uncovered_mask = full_mask ^ covered_mask
+    uncovered_mask = initial_uncovered_mask
     while uncovered_mask:
         task_bit = uncovered_mask & -uncovered_mask
         task_index = task_bit.bit_length() - 1
         rescued_value = best_task_values[task_index]
         if rescued_value <= 0:
+            if max_skills_per_member == 1:
+                return AssignmentResult(
+                    assignments=_compat_fill_uncovered_assignments_single_capacity(
+                        task_skills,
+                        assignments,
+                        uncovered_mask=initial_uncovered_mask,
+                    ),
+                    skill_score=0.0,
+                )
             return AssignmentResult(
                 assignments=_compat_fill_uncovered_assignments(
                     task_skills,
@@ -650,9 +687,21 @@ def _assign_task_skills_compat(
             skill_score=geometric_mean(matched_values),
         )
 
+    if max_skills_per_member == 1:
+        finalized_assignments = _compat_fill_uncovered_assignments_single_capacity(
+            task_skills,
+            assignments,
+            uncovered_mask=initial_uncovered_mask,
+        )
+    else:
+        finalized_assignments = _compat_fill_uncovered_assignments(
+            task_skills,
+            assignments,
+        )
+
     if any(member_mask == 0 for member_mask in member_positive_masks):
         return AssignmentResult(
-            assignments=_compat_fill_uncovered_assignments(task_skills, assignments),
+            assignments=finalized_assignments,
             skill_score=0.0,
         )
 
@@ -662,12 +711,12 @@ def _assign_task_skills_compat(
         and not _compat_has_perfect_positive_matching(member_task_values)
     ):
         return AssignmentResult(
-            assignments=_compat_fill_uncovered_assignments(task_skills, assignments),
+            assignments=finalized_assignments,
             skill_score=0.0,
         )
 
     return AssignmentResult(
-        assignments=_compat_fill_uncovered_assignments(task_skills, assignments),
+        assignments=finalized_assignments,
         skill_score=geometric_mean([*matched_values, *rescued_values]),
     )
 
