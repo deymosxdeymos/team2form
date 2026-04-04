@@ -954,7 +954,8 @@ def greedy_allocations(
 
         if use_upper_bound_pruning and resolved_weights is not None:
             best: ScoredAllocation | None = None
-            best_key: tuple[float, tuple[str, ...]] | None = None
+            best_quality = float('-inf')
+            best_ids: tuple[str, ...] | None = None
             for candidate in candidates:
                 upper_bound = _compat_candidate_quality_upper_bound(
                     people=candidate,
@@ -968,30 +969,56 @@ def greedy_allocations(
                 )
                 if (
                     best is not None
-                    and _objective_component_less(upper_bound, best.quality)
+                    and _objective_component_less(upper_bound, best_quality)
                 ):
                     continue
 
                 scored_allocation = scored_candidate(candidate)
-                candidate_key = (
-                    scored_allocation.quality,
-                    tuple(sorted(member.id for member in scored_allocation.people)),
-                )
-                if best_key is None or candidate_key > best_key:
+                quality = scored_allocation.quality
+                if best is None or quality > best_quality:
                     best = scored_allocation
-                    best_key = candidate_key
+                    best_quality = quality
+                    best_ids = None
+                    continue
+                if quality == best_quality:
+                    candidate_ids = tuple(
+                        sorted(member.id for member in scored_allocation.people)
+                    )
+                    if best_ids is None and best is not None:
+                        best_ids = tuple(sorted(member.id for member in best.people))
+                    if best_ids is None or candidate_ids > best_ids:
+                        best = scored_allocation
+                        best_ids = candidate_ids
 
             if best is None:
                 best = scored_candidate(next(iter(candidates)))
         else:
             if not request.init_random and pre_scored_candidates:
-                best_candidate_people, _best_quality = max(
-                    pre_scored_candidates,
-                    key=lambda entry: (
-                        entry[1],
-                        tuple(sorted(member.id for member in entry[0])),
-                    ),
-                )
+                best_candidate_people: tuple[Person, ...] | None = None
+                best_quality = float('-inf')
+                best_ids: tuple[str, ...] | None = None
+                for candidate_people, quality in pre_scored_candidates:
+                    if best_candidate_people is None or quality > best_quality:
+                        best_candidate_people = candidate_people
+                        best_quality = quality
+                        best_ids = None
+                        continue
+                    if quality == best_quality:
+                        candidate_ids = tuple(
+                            sorted(member.id for member in candidate_people)
+                        )
+                        if best_ids is None and best_candidate_people is not None:
+                            best_ids = tuple(
+                                sorted(
+                                    member.id
+                                    for member in best_candidate_people
+                                )
+                            )
+                        if best_ids is None or candidate_ids > best_ids:
+                            best_candidate_people = candidate_people
+                            best_ids = candidate_ids
+
+                assert best_candidate_people is not None
                 best = scored_candidate(best_candidate_people)
             else:
                 scored_candidates = [
@@ -1004,13 +1031,27 @@ def greedy_allocations(
                         key=lambda candidate: candidate.quality,
                     )
                 else:
-                    best = max(
-                        scored_candidates,
-                        key=lambda candidate: (
-                            candidate.quality,
-                            tuple(sorted(member.id for member in candidate.people)),
-                        ),
-                    )
+                    best = scored_candidates[0]
+                    best_quality = best.quality
+                    best_ids: tuple[str, ...] | None = None
+                    for candidate in scored_candidates[1:]:
+                        quality = candidate.quality
+                        if quality > best_quality:
+                            best = candidate
+                            best_quality = quality
+                            best_ids = None
+                            continue
+                        if quality == best_quality:
+                            candidate_ids = tuple(
+                                sorted(member.id for member in candidate.people)
+                            )
+                            if best_ids is None:
+                                best_ids = tuple(
+                                    sorted(member.id for member in best.people)
+                                )
+                            if candidate_ids > best_ids:
+                                best = candidate
+                                best_ids = candidate_ids
         allocations.append(best)
         chosen_ids = {member.id for member in best.people}
         remaining_people = [
