@@ -658,6 +658,7 @@ def _best_scored_shortlist_candidate_with_compat_pruning(
                 task_preference_logs_by_person_id
             ),
             task_skill_values_by_person_id=task_skill_values_by_person_id,
+            team_signature=tuple(member.id for member in candidate),
             resolved_weights=resolved_weights,
             personality_cache=personality_cache,
             social_cache=social_cache,
@@ -938,12 +939,14 @@ def _compat_candidate_quality_upper_bound(
     task_preference_default: float,
     task_preference_logs_by_person_id: dict[str, float | None] | None,
     task_skill_values_by_person_id: dict[str, tuple[float, ...]],
+    team_signature: tuple[str, ...] | None,
     resolved_weights,
     personality_cache: dict[tuple[Mode, tuple[str, ...]], float],
     social_cache: dict[tuple[float, tuple[str, ...]], float],
     social_preference_presence_cache: dict[tuple[str, ...], bool],
 ) -> float:
-    team_signature = tuple(sorted(member.id for member in people))
+    if team_signature is None:
+        team_signature = tuple(sorted(member.id for member in people))
 
     personality_cache_key = (Mode.COMPAT, team_signature)
     personality_score = personality_cache.get(personality_cache_key)
@@ -1222,6 +1225,7 @@ def greedy_allocations(
                         task_skill_values_by_person_id=(
                             task_skill_values_by_person_id
                         ),
+                        team_signature=tuple(member.id for member in candidate),
                         resolved_weights=resolved_weights,
                         personality_cache=personality_cache,
                         social_cache=social_cache,
