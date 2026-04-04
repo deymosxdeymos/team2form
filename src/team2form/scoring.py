@@ -28,6 +28,11 @@ _COMPAT_MEMBER_TASK_VALUES_CACHE: dict[
     tuple[Person, tuple[float, ...]],
 ] = {}
 
+_COMPAT_RICH_PRIORITY_TASKS_CACHE: dict[
+    tuple[tuple[str, ...], tuple[int, ...], tuple[float, ...]],
+    tuple[tuple[float, int, str, int], ...],
+] = {}
+
 
 @dataclass(slots=True)
 class AssignmentResult:
@@ -386,27 +391,38 @@ def _compat_member_priority_order(
         )
         return (not positive_tasks, positive_tasks, len(positive_tasks))
 
-    def rich_first_priority_key(member_index: int) -> tuple[object, ...]:
-        positive_tasks = sorted(
-            [
-                (
-                    value,
-                    task_capable_counts[task_index],
-                    task_skill_ids[task_index],
-                    task_index,
-                )
-                for task_index, value in enumerate(member_task_values[member_index])
-                if value > 0
-            ],
-            reverse=True,
-        )
-        return (len(positive_tasks), positive_tasks)
-
     if require_all_members:
         return sorted(
             range(len(member_task_values)),
             key=scarce_first_priority_key,
         )
+
+    task_capable_counts_key = tuple(task_capable_counts)
+    task_skill_ids_key = tuple(task_skill_ids)
+
+    def rich_first_priority_key(member_index: int) -> tuple[object, ...]:
+        task_values = tuple(member_task_values[member_index])
+        cache_key = (task_skill_ids_key, task_capable_counts_key, task_values)
+        positive_tasks = _COMPAT_RICH_PRIORITY_TASKS_CACHE.get(cache_key)
+        if positive_tasks is None:
+            positive_tasks = tuple(
+                sorted(
+                    (
+                        (
+                            value,
+                            task_capable_counts[task_index],
+                            task_skill_ids[task_index],
+                            task_index,
+                        )
+                        for task_index, value in enumerate(task_values)
+                        if value > 0
+                    ),
+                    reverse=True,
+                )
+            )
+            _COMPAT_RICH_PRIORITY_TASKS_CACHE[cache_key] = positive_tasks
+
+        return (len(positive_tasks), positive_tasks)
 
     return sorted(
         range(len(member_task_values)),

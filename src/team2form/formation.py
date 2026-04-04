@@ -713,6 +713,7 @@ def _compat_candidate_quality_upper_bound(
     people: tuple[Person, ...],
     task_preferences: dict[str, float],
     task_preference_default: float,
+    task_skill_upper_by_person_id: dict[str, float],
     resolved_weights,
     personality_cache: dict[tuple[Mode, tuple[str, ...]], float],
     social_cache: dict[tuple[float, tuple[str, ...]], float],
@@ -751,8 +752,14 @@ def _compat_candidate_quality_upper_bound(
         compat_default=task_preference_default,
     )
 
+    skill_score_upper = 0.0
+    for member in people:
+        member_upper = task_skill_upper_by_person_id[member.id]
+        if member_upper > skill_score_upper:
+            skill_score_upper = member_upper
+
     return (
-        resolved_weights.alpha
+        resolved_weights.alpha * skill_score_upper
         + resolved_weights.beta * personality_score
         + resolved_weights.gamma * task_preference_score
         + resolved_weights.delta * social_score_upper
@@ -864,6 +871,7 @@ def greedy_allocations(
         )
         task_preferences: dict[str, float] = {}
         task_preference_default = 0.5
+        task_skill_upper_by_person_id: dict[str, float] = {}
         personality_cache: dict[tuple[Mode, tuple[str, ...]], float] = {}
         social_cache: dict[tuple[float, tuple[str, ...]], float] = {}
         social_preference_presence_cache: dict[tuple[str, ...], bool] = {}
@@ -871,6 +879,18 @@ def greedy_allocations(
         if use_upper_bound_pruning:
             task_preferences = _request_task_preferences_by_task_id(request)[task_id]
             task_preference_default = 0.0 if not task_preferences else 0.5
+            task_skill_ids = {skill.id for skill in task.skills}
+            task_skill_upper_by_person_id = {
+                person.id: max(
+                    (
+                        skill.level
+                        for skill in person.skills
+                        if skill.id in task_skill_ids
+                    ),
+                    default=0.0,
+                )
+                for person in request.people
+            }
             (
                 personality_cache,
                 social_cache,
@@ -921,6 +941,7 @@ def greedy_allocations(
                     people=candidate,
                     task_preferences=task_preferences,
                     task_preference_default=task_preference_default,
+                    task_skill_upper_by_person_id=task_skill_upper_by_person_id,
                     resolved_weights=resolved_weights,
                     personality_cache=personality_cache,
                     social_cache=social_cache,
