@@ -12,9 +12,9 @@ from typing import overload
 from .models import FormationRequest, Person, Task, TeamResult, TeamsResponse
 from .modes import Mode, WeightPreset
 from .scoring import (
+    _calculate_team_quality_components_for_people,
     _task_preference_score,
     assigned_people_from_assignments,
-    calculate_team_quality_for_people,
     coverage_for_person_and_task_skill,
     preference_lookup,
     similarity_lookup,
@@ -651,7 +651,7 @@ def score_team(
             )
             social_cache[social_cache_key] = social_score
 
-    breakdown = calculate_team_quality_for_people(
+    components = _calculate_team_quality_components_for_people(
         task_skills=task.skills,
         team=people,
         alpha=request.alpha,
@@ -678,8 +678,8 @@ def score_team(
     return ScoredAllocation(
         task_id=task_id,
         people=people,
-        quality=breakdown.quality,
-        assignments=breakdown.assignments,
+        quality=components.quality,
+        assignments=components.assignments,
     )
 
 

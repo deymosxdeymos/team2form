@@ -40,6 +40,17 @@ class AssignmentResult:
     skill_score: float
 
 
+@dataclass(slots=True)
+class _TeamQualityComponents:
+    quality: float
+    skill_score: float
+    personality_score: float
+    task_preference_score: float
+    social_score: float
+    assignments: dict[str, list[str]]
+    weights: Weights
+
+
 def geometric_mean(values: Iterable[float]) -> float:
     collected = list(values)
     if not collected:
@@ -1142,7 +1153,7 @@ def build_team_quality_request(
     )
 
 
-def calculate_team_quality_for_people(
+def _calculate_team_quality_components_for_people(
     *,
     task_skills: list[TaskSkill],
     team: Sequence[Person],
@@ -1161,7 +1172,7 @@ def calculate_team_quality_for_people(
     personality_score: float | None = None,
     social_score: float | None = None,
     resolved_weights: Weights | None = None,
-) -> QualityBreakdown:
+) -> _TeamQualityComponents:
     weights = resolved_weights or resolve_weights(
         alpha=alpha,
         beta=beta,
@@ -1209,19 +1220,70 @@ def calculate_team_quality_for_people(
         + weights.gamma * task_preference_score
         + weights.delta * social_score
     )
-    return QualityBreakdown(
+    return _TeamQualityComponents(
         quality=quality,
-        skillScore=assignment.skill_score,
-        personalityScore=personality_score,
-        taskPreferenceScore=task_preference_score,
-        socialScore=social_score,
-        weights={
-            'alpha': weights.alpha,
-            'beta': weights.beta,
-            'gamma': weights.gamma,
-            'delta': weights.delta,
-        },
+        skill_score=assignment.skill_score,
+        personality_score=personality_score,
+        task_preference_score=task_preference_score,
+        social_score=social_score,
         assignments=assignment.assignments,
+        weights=weights,
+    )
+
+
+
+def calculate_team_quality_for_people(
+    *,
+    task_skills: list[TaskSkill],
+    team: Sequence[Person],
+    alpha: float | None,
+    beta: float | None,
+    gamma: float | None,
+    delta: float | None,
+    similarities: list[Similarity] | None,
+    mode: Mode = Mode.COMPAT,
+    preset: WeightPreset | None = None,
+    normalize_weights: bool = False,
+    task_preferences: dict[str, float] | None = None,
+    compat_task_preference_default: float | None = None,
+    compat_social_preference_default: float | None = None,
+    compat_zero_social_without_preferences: bool = False,
+    personality_score: float | None = None,
+    social_score: float | None = None,
+    resolved_weights: Weights | None = None,
+) -> QualityBreakdown:
+    components = _calculate_team_quality_components_for_people(
+        task_skills=task_skills,
+        team=team,
+        alpha=alpha,
+        beta=beta,
+        gamma=gamma,
+        delta=delta,
+        similarities=similarities,
+        mode=mode,
+        preset=preset,
+        normalize_weights=normalize_weights,
+        task_preferences=task_preferences,
+        compat_task_preference_default=compat_task_preference_default,
+        compat_social_preference_default=compat_social_preference_default,
+        compat_zero_social_without_preferences=compat_zero_social_without_preferences,
+        personality_score=personality_score,
+        social_score=social_score,
+        resolved_weights=resolved_weights,
+    )
+    return QualityBreakdown(
+        quality=components.quality,
+        skillScore=components.skill_score,
+        personalityScore=components.personality_score,
+        taskPreferenceScore=components.task_preference_score,
+        socialScore=components.social_score,
+        weights={
+            'alpha': components.weights.alpha,
+            'beta': components.weights.beta,
+            'gamma': components.weights.gamma,
+            'delta': components.weights.delta,
+        },
+        assignments=components.assignments,
     )
 
 

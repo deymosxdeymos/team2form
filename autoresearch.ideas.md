@@ -3,7 +3,7 @@
 - Explore a broader `candidate_combinations()` ranked-selection redesign (algorithmic, not micro-tweaks), since many heap/list/comprehension/key-canonicalization micro-optimizations have consistently regressed.
 - Investigate behavior-preserving reductions in `_compat_member_task_analysis` / `_compat_member_priority_order` that remove whole classes of work (not extra caching/branching), while keeping exact tie-breaking semantics.
 - Continue request-scoped immutable-data caching on the hottest score path only (task lookup/task preferences/team social-preference presence/resolved weights proved high leverage); avoid extending caches into colder paths unless profiling justifies it.
-- Re-validate commit `b33001a` (tightened greedy skill upper bound + rich-priority key caching) when host latency returns to the low-80ms band to confirm the gain is not regime-specific.
+- Re-validate commit `b57e04f` (score-cache/team-signature canonicalization reuse on top of `b33001a`) when host latency returns to the low-80ms band to confirm the gain is not regime-specific.
 
 Pruned as stale/tried (do not retry without a materially different approach):
 - Per-shortlist or global caching layers for explicit social-preference pair checks.
@@ -73,3 +73,4 @@ Pruned as stale/tried (do not retry without a materially different approach):
 - Inline combined matched+rescued geometric-mean computation in `_assign_task_skills_compat` (replace `geometric_mean([*matched_values, *rescued_values])`).
 - Thread `task_skill_ids` through `_compat_fill_uncovered_assignments_single_capacity` to avoid `task_skills[index].id` lookups.
 - Team-component cache signature switch from sorted member-id strings to sorted member object identities.
+- Precomputed per-request COMPAT personality-component map for upper-bound helper (`team_personality_score` replacement) — neutral-to-worse under current workload.
