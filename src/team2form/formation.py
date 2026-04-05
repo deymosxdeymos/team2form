@@ -735,7 +735,16 @@ def _best_scored_shortlist_candidate_with_compat_pruning(
     ] = []
     combinations = itertools.combinations(shortlist, task.team_size)
     for index, candidate in enumerate(combinations):
-        team_signature = tuple(member.id for member in candidate)
+        if len(candidate) == 4:
+            team_signature = (
+                candidate[0].id,
+                candidate[1].id,
+                candidate[2].id,
+                candidate[3].id,
+            )
+        else:
+            team_signature = tuple(member.id for member in candidate)
+
         personality_cache_key = (Mode.COMPAT, team_signature)
         personality_score = personality_cache.get(personality_cache_key)
         if personality_score is None:
@@ -1374,7 +1383,16 @@ def greedy_allocations(
                     tuple[float, int, tuple[Person, ...], tuple[str, ...]]
                 ] = []
                 for index, candidate in enumerate(candidates):
-                    team_signature = tuple(member.id for member in candidate)
+                    if len(candidate) == 4:
+                        team_signature = (
+                            candidate[0].id,
+                            candidate[1].id,
+                            candidate[2].id,
+                            candidate[3].id,
+                        )
+                    else:
+                        team_signature = tuple(member.id for member in candidate)
+
                     personality_cache_key = (Mode.COMPAT, team_signature)
                     personality_score = personality_cache.get(personality_cache_key)
                     if personality_score is None:
@@ -1928,6 +1946,30 @@ def improve_allocations(
                         for member in right.people
                     )
 
+                    if len(swapped_left) == 4:
+                        swapped_left_signature = (
+                            swapped_left[0].id,
+                            swapped_left[1].id,
+                            swapped_left[2].id,
+                            swapped_left[3].id,
+                        )
+                    else:
+                        swapped_left_signature = tuple(
+                            member.id for member in swapped_left
+                        )
+
+                    if len(swapped_right) == 4:
+                        swapped_right_signature = (
+                            swapped_right[0].id,
+                            swapped_right[1].id,
+                            swapped_right[2].id,
+                            swapped_right[3].id,
+                        )
+                    else:
+                        swapped_right_signature = tuple(
+                            member.id for member in swapped_right
+                        )
+
                     if (
                         compat_bound_resolved_weights is not None
                         and compat_swap_bound_data_by_task_id
@@ -1955,9 +1997,7 @@ def improve_allocations(
                             task_skill_values_by_person_id=(
                                 left_task_skill_values_by_person_id
                             ),
-                            team_signature=tuple(
-                                member.id for member in swapped_left
-                            ),
+                            team_signature=swapped_left_signature,
                             resolved_weights=compat_bound_resolved_weights,
                             personality_cache=compat_bound_personality_cache,
                             social_cache=compat_bound_social_cache,
@@ -1975,9 +2015,7 @@ def improve_allocations(
                             task_skill_values_by_person_id=(
                                 right_task_skill_values_by_person_id
                             ),
-                            team_signature=tuple(
-                                member.id for member in swapped_right
-                            ),
+                            team_signature=swapped_right_signature,
                             resolved_weights=compat_bound_resolved_weights,
                             personality_cache=compat_bound_personality_cache,
                             social_cache=compat_bound_social_cache,
