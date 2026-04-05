@@ -647,10 +647,56 @@ def _best_scored_shortlist_candidate_with_compat_pruning(
     all_equal = True
     scored_count = 0
 
-    bounded_candidates: list[tuple[float, int, tuple[Person, ...]]] = []
+    cheap_bounded_candidates: list[tuple[float, int, tuple[Person, ...]]] = []
     combinations = itertools.combinations(shortlist, task.team_size)
     for index, candidate in enumerate(combinations):
-        upper_bound = _compat_candidate_quality_upper_bound(
+        task_preference_log_sum = 0.0
+        for member in candidate:
+            task_preference_log = task_preference_logs_by_person_id[member.id]
+            if task_preference_log is None:
+                task_preference_score = 0.0
+                break
+            task_preference_log_sum += task_preference_log
+        else:
+            task_preference_score = math.exp(
+                task_preference_log_sum / len(candidate)
+            )
+
+        task_skill_rows = [
+            task_skill_values_by_person_id[member.id]
+            for member in candidate
+        ]
+        task_skill_bests = [0.0] * len(task_skill_rows[0])
+        for task_skill_values in task_skill_rows:
+            for task_index, value in enumerate(task_skill_values):
+                if value > task_skill_bests[task_index]:
+                    task_skill_bests[task_index] = value
+        skill_score_upper = geometric_mean(task_skill_bests)
+
+        cheap_upper_bound = (
+            resolved_weights.alpha * skill_score_upper
+            + resolved_weights.beta * 1.32
+            + resolved_weights.gamma * task_preference_score
+            + resolved_weights.delta * 1.0
+        )
+        cheap_bounded_candidates.append((cheap_upper_bound, index, candidate))
+
+    cheap_bounded_candidates.sort(
+        key=lambda entry: (
+            entry[0],
+            -entry[1],
+        ),
+        reverse=True,
+    )
+
+    for cheap_upper_bound, index, candidate in cheap_bounded_candidates:
+        if (
+            best is not None
+            and _objective_component_less(cheap_upper_bound, best_quality)
+        ):
+            break
+
+        exact_upper_bound = _compat_candidate_quality_upper_bound(
             people=candidate,
             task_preferences=task_preferences,
             task_preference_default=task_preference_default,
@@ -664,19 +710,11 @@ def _best_scored_shortlist_candidate_with_compat_pruning(
             social_cache=social_cache,
             social_preference_presence_cache=social_preference_presence_cache,
         )
-        bounded_candidates.append((upper_bound, index, candidate))
-
-    bounded_candidates.sort(
-        key=lambda entry: (
-            entry[0],
-            -entry[1],
-        ),
-        reverse=True,
-    )
-
-    for upper_bound, index, candidate in bounded_candidates:
-        if best is not None and _objective_component_less(upper_bound, best_quality):
-            break
+        if (
+            best is not None
+            and _objective_component_less(exact_upper_bound, best_quality)
+        ):
+            continue
 
         scored_allocation = cached_score_team(
             request,
