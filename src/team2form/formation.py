@@ -778,26 +778,27 @@ def _best_scored_shortlist_candidate_with_compat_pruning(
             fourth_task_skill_values = task_skill_values_by_person_id[
                 team_signature[3]
             ]
+            max_value = max
             task_skill_bests = [
-                max(
+                max_value(
                     first_task_skill_values[0],
                     second_task_skill_values[0],
                     third_task_skill_values[0],
                     fourth_task_skill_values[0],
                 ),
-                max(
+                max_value(
                     first_task_skill_values[1],
                     second_task_skill_values[1],
                     third_task_skill_values[1],
                     fourth_task_skill_values[1],
                 ),
-                max(
+                max_value(
                     first_task_skill_values[2],
                     second_task_skill_values[2],
                     third_task_skill_values[2],
                     fourth_task_skill_values[2],
                 ),
-                max(
+                max_value(
                     first_task_skill_values[3],
                     second_task_skill_values[3],
                     third_task_skill_values[3],
@@ -1184,26 +1185,27 @@ def _compat_candidate_quality_upper_bound(
         second_task_skill_values = task_skill_values_by_person_id[people[1].id]
         third_task_skill_values = task_skill_values_by_person_id[people[2].id]
         fourth_task_skill_values = task_skill_values_by_person_id[people[3].id]
+        max_value = max
         task_skill_bests = [
-            max(
+            max_value(
                 first_task_skill_values[0],
                 second_task_skill_values[0],
                 third_task_skill_values[0],
                 fourth_task_skill_values[0],
             ),
-            max(
+            max_value(
                 first_task_skill_values[1],
                 second_task_skill_values[1],
                 third_task_skill_values[1],
                 fourth_task_skill_values[1],
             ),
-            max(
+            max_value(
                 first_task_skill_values[2],
                 second_task_skill_values[2],
                 third_task_skill_values[2],
                 fourth_task_skill_values[2],
             ),
-            max(
+            max_value(
                 first_task_skill_values[3],
                 second_task_skill_values[3],
                 third_task_skill_values[3],
@@ -1497,26 +1499,27 @@ def greedy_allocations(
                         fourth_task_skill_values = task_skill_values_by_person_id[
                             team_signature[3]
                         ]
+                        max_value = max
                         task_skill_bests = [
-                            max(
+                            max_value(
                                 first_task_skill_values[0],
                                 second_task_skill_values[0],
                                 third_task_skill_values[0],
                                 fourth_task_skill_values[0],
                             ),
-                            max(
+                            max_value(
                                 first_task_skill_values[1],
                                 second_task_skill_values[1],
                                 third_task_skill_values[1],
                                 fourth_task_skill_values[1],
                             ),
-                            max(
+                            max_value(
                                 first_task_skill_values[2],
                                 second_task_skill_values[2],
                                 third_task_skill_values[2],
                                 fourth_task_skill_values[2],
                             ),
-                            max(
+                            max_value(
                                 first_task_skill_values[3],
                                 second_task_skill_values[3],
                                 third_task_skill_values[3],

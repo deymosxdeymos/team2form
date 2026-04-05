@@ -3,7 +3,7 @@
 - Explore a broader `candidate_combinations()` ranked-selection redesign (algorithmic, not micro-tweaks), since many heap/list/comprehension/key-canonicalization micro-optimizations have consistently regressed.
 - Investigate behavior-preserving reductions in `_compat_member_task_analysis` / `_compat_member_priority_order` that remove whole classes of work (not extra caching/branching), while keeping exact tie-breaking semantics.
 - Continue request-scoped immutable-data caching on the hottest score path only (task lookup/task preferences/team social-preference presence/resolved weights proved high leverage); avoid extending caches into colder paths unless profiling justifies it.
-- Re-validate commit `e29f294` (single-pass `geometric_mean` + 4-item list hot path, lazy shortlist-scorer construction for >cap tasks only, direct `itertools.combinations` in <=cap pruning path, relevant-people upper-bound prep domains, tighter skill-upper accumulation loops, and pair-level objective arithmetic hoisting in swaps) when host latency returns to a stable band to confirm gains are not regime-specific.
+- Re-validate commit `290a04e` (single-pass `geometric_mean` + 4-item list hot path + local log/exp binding, lazy shortlist-scorer construction for >cap tasks only, direct `itertools.combinations` in <=cap pruning path, 4-member team-signature fast paths in pruning/swap bounds, and 4x4 skill-upper aggregation fast paths) when host latency returns to a stable band to confirm gains are not regime-specific.
 - Use immediate paired A/B validation (candidate run followed by no-code baseline, or vice versa) for marginal deltas while host variance remains high.
 
 Pruned as stale/tried (do not retry without a materially different approach):
@@ -88,3 +88,10 @@ Pruned as stale/tried (do not retry without a materially different approach):
 - Collapsing two-stage greedy pruning into a single social-inclusive bound pass (compute social upper during cheap stage, remove exact-stage helper call) — regressed and increased complexity.
 - Single-pass swapped-team+signature construction rewrite in `improve_allocations` swap loop — neutral/slightly worse in end-to-end runs.
 - Request-scoped cached COMPAT bound-prep layer (`_request_compat_bound_data_by_task_id`) — no clear win under current noise versus added complexity.
+- 4-member task-preference-log unrolled aggregation in COMPAT bound loops (`team_signature`-indexed log lookups) — regressed.
+- Cheap-bound sort-key rewrite using stored `-index` plus `sort(reverse=True)` (remove lambda key) — regressed.
+- Local scalar hoisting of resolved weights (`alpha/beta/gamma/delta`) inside cheap-bound and upper-bound loops — regressed.
+- 4x4 skill-upper fast-path rewrite replacing `max(...)` with manual comparison chains — regressed.
+- 4x4 skill-upper direct geometric-mean composition (avoid `task_skill_bests` list + `geometric_mean(...)`) — regressed.
+- In-place `allocations` mutation in `improve_allocations` (remove accepted-move `allocations.copy()`) — inconclusive/near-noise.
+- Index-based 4-member swap-team tuple construction in `improve_allocations` (replace tuple-comprehension/id-match generation) — regressed.
