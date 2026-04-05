@@ -369,35 +369,33 @@ def team_personality_score(team: Sequence[Person], *, mode: Mode) -> float:
         second_sn = second_personality.sn
         third_sn = third_personality.sn
         fourth_sn = fourth_personality.sn
-        sn_mean = (
-            first_sn + second_sn + third_sn + fourth_sn
-        ) / 4.0
-        sn_stddev = math.sqrt(
-            (
-                (first_sn - sn_mean) ** 2
-                + (second_sn - sn_mean) ** 2
-                + (third_sn - sn_mean) ** 2
-                + (fourth_sn - sn_mean) ** 2
-            )
-            / 4.0
+        sn_sum = first_sn + second_sn + third_sn + fourth_sn
+        sn_sum_sq = (
+            (first_sn * first_sn)
+            + (second_sn * second_sn)
+            + (third_sn * third_sn)
+            + (fourth_sn * fourth_sn)
         )
+        sn_variance = (
+            sn_sum_sq / 4.0
+        ) - ((sn_sum / 4.0) * (sn_sum / 4.0))
+        sn_stddev = math.sqrt(sn_variance) if sn_variance > 0 else 0.0
 
         first_tf = first_personality.tf
         second_tf = second_personality.tf
         third_tf = third_personality.tf
         fourth_tf = fourth_personality.tf
-        tf_mean = (
-            first_tf + second_tf + third_tf + fourth_tf
-        ) / 4.0
-        tf_stddev = math.sqrt(
-            (
-                (first_tf - tf_mean) ** 2
-                + (second_tf - tf_mean) ** 2
-                + (third_tf - tf_mean) ** 2
-                + (fourth_tf - tf_mean) ** 2
-            )
-            / 4.0
+        tf_sum = first_tf + second_tf + third_tf + fourth_tf
+        tf_sum_sq = (
+            (first_tf * first_tf)
+            + (second_tf * second_tf)
+            + (third_tf * third_tf)
+            + (fourth_tf * fourth_tf)
         )
+        tf_variance = (
+            tf_sum_sq / 4.0
+        ) - ((tf_sum / 4.0) * (tf_sum / 4.0))
+        tf_stddev = math.sqrt(tf_variance) if tf_variance > 0 else 0.0
 
         diversity = 0.75 * sn_stddev * tf_stddev
         gender_bonus = _compat_gender_bonus(team)
