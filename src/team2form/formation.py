@@ -345,6 +345,85 @@ def shortlist_scorers(
     social_potentials: dict[str, float] = {}
     personality_potentials: dict[str, float] = {}
 
+    if team_size > 1 and len(people) > 1:
+        partner_count = min(team_size - 1, len(people) - 1)
+
+        personality_pair_scores_by_person_id: dict[str, list[float]] | None = None
+        if weights.beta > 0:
+            personality_pair_scores_by_person_id = {
+                person.id: [] for person in people
+            }
+
+        social_pair_scores_by_person_id: dict[str, list[float]] | None = None
+        explicit_preference_ids_by_person_id: dict[str, set[str]] | None = None
+        if weights.delta > 0:
+            social_pair_scores_by_person_id = {person.id: [] for person in people}
+            explicit_preference_ids_by_person_id = {
+                person.id: {
+                    preference.person_id
+                    for preference in (person.preferences or [])
+                    if preference.person_id != person.id
+                }
+                for person in people
+            }
+
+        if (
+            personality_pair_scores_by_person_id is not None
+            or social_pair_scores_by_person_id is not None
+        ):
+            for left_index, left_member in enumerate(people):
+                for right_member in people[left_index + 1 :]:
+                    if personality_pair_scores_by_person_id is not None:
+                        personality_pair_score = team_personality_score(
+                            (left_member, right_member),
+                            mode=mode,
+                        )
+                        personality_pair_scores_by_person_id[left_member.id].append(
+                            personality_pair_score
+                        )
+                        personality_pair_scores_by_person_id[right_member.id].append(
+                            personality_pair_score
+                        )
+
+                    if social_pair_scores_by_person_id is not None:
+                        assert explicit_preference_ids_by_person_id is not None
+                        social_pair_score = 0.0
+                        if (
+                            mode != Mode.COMPAT
+                            or right_member.id
+                            in explicit_preference_ids_by_person_id[left_member.id]
+                            or left_member.id
+                            in explicit_preference_ids_by_person_id[
+                                right_member.id
+                            ]
+                        ):
+                            social_pair_score = team_social_score(
+                                (left_member, right_member),
+                                compat_default=0.5,
+                            )
+                        social_pair_scores_by_person_id[left_member.id].append(
+                            social_pair_score
+                        )
+                        social_pair_scores_by_person_id[right_member.id].append(
+                            social_pair_score
+                        )
+
+            if personality_pair_scores_by_person_id is not None:
+                for person_id, pair_scores in (
+                    personality_pair_scores_by_person_id.items()
+                ):
+                    personality_potentials[person_id] = (
+                        sum(sorted(pair_scores, reverse=True)[:partner_count])
+                        / partner_count
+                    )
+
+            if social_pair_scores_by_person_id is not None:
+                for person_id, pair_scores in social_pair_scores_by_person_id.items():
+                    social_potentials[person_id] = (
+                        sum(sorted(pair_scores, reverse=True)[:partner_count])
+                        / partner_count
+                    )
+
     def social_potential(person: Person) -> float:
         if weights.delta <= 0:
             return 0.0
