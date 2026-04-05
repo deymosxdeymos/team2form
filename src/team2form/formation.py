@@ -45,6 +45,10 @@ MAX_SCORED_COMBINATION_EXPANSION = 4
 OBJECTIVE_REL_TOL = 1e-12
 OBJECTIVE_ABS_TOL = 1e-15
 
+
+def _unused_member_scorer(_person: Person) -> tuple[float, float, float, float, float]:
+    return (0.0, 0.0, 0.0, 0.0, 0.0)
+
 _REQUEST_TEAM_COMPONENT_CACHES: dict[
     int,
     tuple[
@@ -1231,17 +1235,21 @@ def greedy_allocations(
 
     for task in task_order:
         task_id = task.id
-        member_scorer, alternate_scorers = shortlist_scorers(
-            request,
-            people=remaining_people,
-            task_id=task_id,
-            team_size=task.team_size,
-            mode=mode,
-            preset=preset,
-            normalize_weights=normalize_weights,
-        )
-
         task_total = math.comb(len(remaining_people), task.team_size)
+
+        member_scorer = _unused_member_scorer
+        alternate_scorers: list[Callable[[Person], float]] = []
+        if max_candidate_teams is not None and task_total > max_candidate_teams:
+            member_scorer, alternate_scorers = shortlist_scorers(
+                request,
+                people=remaining_people,
+                task_id=task_id,
+                team_size=task.team_size,
+                mode=mode,
+                preset=preset,
+                normalize_weights=normalize_weights,
+            )
+
         use_upper_bound_pruning = (
             not request.init_random
             and mode == Mode.COMPAT
