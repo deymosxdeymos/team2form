@@ -208,7 +208,9 @@ def team_social_score(
 
         first_member_score = (1.0 + first_pair_preference) / 2.0
         second_member_score = (1.0 + second_pair_preference) / 2.0
-        return geometric_mean([first_member_score, second_member_score])
+        if first_member_score <= 0 or second_member_score <= 0:
+            return 0.0
+        return math.sqrt(first_member_score * second_member_score)
 
     preference_mappings = {
         member.id: preference_lookup(member.preferences)
