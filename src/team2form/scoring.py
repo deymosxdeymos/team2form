@@ -191,16 +191,23 @@ def team_social_score(
 
     if len(team) == 2:
         first_member, second_member = team
-        first_preferences = preference_lookup(first_member.preferences)
-        second_preferences = preference_lookup(second_member.preferences)
-        first_member_score = (
-            1.0
-            + first_preferences.get(second_member.id, compat_default)
-        ) / 2.0
-        second_member_score = (
-            1.0
-            + second_preferences.get(first_member.id, compat_default)
-        ) / 2.0
+
+        first_pair_preference = compat_default
+        if first_member.preferences:
+            for preference in first_member.preferences:
+                if preference.person_id == second_member.id:
+                    first_pair_preference = preference.preference
+                    break
+
+        second_pair_preference = compat_default
+        if second_member.preferences:
+            for preference in second_member.preferences:
+                if preference.person_id == first_member.id:
+                    second_pair_preference = preference.preference
+                    break
+
+        first_member_score = (1.0 + first_pair_preference) / 2.0
+        second_member_score = (1.0 + second_pair_preference) / 2.0
         return geometric_mean([first_member_score, second_member_score])
 
     preference_mappings = {
