@@ -222,6 +222,100 @@ def team_personality_score(team: Sequence[Person], *, mode: Mode) -> float:
     if not team:
         return 0.0
 
+    if len(team) == 2:
+        first_member, second_member = team
+        first_personality = first_member.personality
+        second_personality = second_member.personality
+
+        sn_stddev = abs(first_personality.sn - second_personality.sn) / 2.0
+        tf_stddev = abs(first_personality.tf - second_personality.tf) / 2.0
+
+        if mode == Mode.COMPAT:
+            diversity = 0.75 * sn_stddev * tf_stddev
+
+            best_compat_etj = 0.0
+            if (
+                first_personality.ei > 0
+                and first_personality.tf > 0
+                and first_personality.pj > 0
+            ):
+                best_compat_etj = (
+                    first_personality.ei
+                    + first_personality.tf
+                    + first_personality.pj
+                ) / 3.0
+            if (
+                second_personality.ei > 0
+                and second_personality.tf > 0
+                and second_personality.pj > 0
+            ):
+                second_compat_etj = (
+                    second_personality.ei
+                    + second_personality.tf
+                    + second_personality.pj
+                ) / 3.0
+                if second_compat_etj > best_compat_etj:
+                    best_compat_etj = second_compat_etj
+
+            first_compat_introvert = max(-first_personality.ei, 0.0)
+            second_compat_introvert = max(-second_personality.ei, 0.0)
+            best_compat_introvert = (
+                first_compat_introvert
+                if first_compat_introvert >= second_compat_introvert
+                else second_compat_introvert
+            )
+
+            gender_bonus = _compat_gender_bonus(team)
+            return (
+                diversity
+                + (0.2475 * best_compat_etj)
+                + (0.2475 * best_compat_introvert)
+                + gender_bonus
+            )
+
+        diversity = sn_stddev * tf_stddev
+
+        best_paper_etj = 0.0
+        if (
+            first_personality.ei > 0
+            and first_personality.tf > 0
+            and first_personality.pj > 0
+        ):
+            best_paper_etj = 0.19 * (
+                first_personality.tf
+                + first_personality.ei
+                + first_personality.pj
+            )
+        if (
+            second_personality.ei > 0
+            and second_personality.tf > 0
+            and second_personality.pj > 0
+        ):
+            second_paper_etj = 0.19 * (
+                second_personality.tf
+                + second_personality.ei
+                + second_personality.pj
+            )
+            if second_paper_etj > best_paper_etj:
+                best_paper_etj = second_paper_etj
+
+        first_paper_introvert = max(0.0, 0.19 * (-first_personality.ei))
+        second_paper_introvert = max(0.0, 0.19 * (-second_personality.ei))
+        best_paper_introvert = (
+            first_paper_introvert
+            if first_paper_introvert >= second_paper_introvert
+            else second_paper_introvert
+        )
+
+        gender_bonus = (
+            0.1
+            if first_member.gender is not None
+            and second_member.gender is not None
+            and first_member.gender != second_member.gender
+            else 0.0
+        )
+        return diversity + best_paper_etj + best_paper_introvert + gender_bonus
+
     sn_values: list[float] = []
     tf_values: list[float] = []
     declared_genders: set[str] = set()
