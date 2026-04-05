@@ -766,14 +766,51 @@ def _best_scored_shortlist_candidate_with_compat_pruning(
             )
 
         first_task_skill_values = task_skill_values_by_person_id[
-            candidate[0].id
+            team_signature[0]
         ]
-        task_skill_bests = [*first_task_skill_values]
-        for member in candidate[1:]:
-            task_skill_values = task_skill_values_by_person_id[member.id]
-            for task_index, value in enumerate(task_skill_values):
-                if value > task_skill_bests[task_index]:
-                    task_skill_bests[task_index] = value
+        if len(candidate) == 4 and len(first_task_skill_values) == 4:
+            second_task_skill_values = task_skill_values_by_person_id[
+                team_signature[1]
+            ]
+            third_task_skill_values = task_skill_values_by_person_id[
+                team_signature[2]
+            ]
+            fourth_task_skill_values = task_skill_values_by_person_id[
+                team_signature[3]
+            ]
+            task_skill_bests = [
+                max(
+                    first_task_skill_values[0],
+                    second_task_skill_values[0],
+                    third_task_skill_values[0],
+                    fourth_task_skill_values[0],
+                ),
+                max(
+                    first_task_skill_values[1],
+                    second_task_skill_values[1],
+                    third_task_skill_values[1],
+                    fourth_task_skill_values[1],
+                ),
+                max(
+                    first_task_skill_values[2],
+                    second_task_skill_values[2],
+                    third_task_skill_values[2],
+                    fourth_task_skill_values[2],
+                ),
+                max(
+                    first_task_skill_values[3],
+                    second_task_skill_values[3],
+                    third_task_skill_values[3],
+                    fourth_task_skill_values[3],
+                ),
+            ]
+        else:
+            task_skill_bests = [*first_task_skill_values]
+            for member in candidate[1:]:
+                task_skill_values = task_skill_values_by_person_id[member.id]
+                for task_index, value in enumerate(task_skill_values):
+                    if value > task_skill_bests[task_index]:
+                        task_skill_bests[task_index] = value
         skill_score_upper = geometric_mean(task_skill_bests)
 
         cheap_upper_bound = (
@@ -1143,12 +1180,43 @@ def _compat_candidate_quality_upper_bound(
             )
 
     first_task_skill_values = task_skill_values_by_person_id[people[0].id]
-    task_skill_bests = [*first_task_skill_values]
-    for member in people[1:]:
-        task_skill_values = task_skill_values_by_person_id[member.id]
-        for task_index, value in enumerate(task_skill_values):
-            if value > task_skill_bests[task_index]:
-                task_skill_bests[task_index] = value
+    if len(people) == 4 and len(first_task_skill_values) == 4:
+        second_task_skill_values = task_skill_values_by_person_id[people[1].id]
+        third_task_skill_values = task_skill_values_by_person_id[people[2].id]
+        fourth_task_skill_values = task_skill_values_by_person_id[people[3].id]
+        task_skill_bests = [
+            max(
+                first_task_skill_values[0],
+                second_task_skill_values[0],
+                third_task_skill_values[0],
+                fourth_task_skill_values[0],
+            ),
+            max(
+                first_task_skill_values[1],
+                second_task_skill_values[1],
+                third_task_skill_values[1],
+                fourth_task_skill_values[1],
+            ),
+            max(
+                first_task_skill_values[2],
+                second_task_skill_values[2],
+                third_task_skill_values[2],
+                fourth_task_skill_values[2],
+            ),
+            max(
+                first_task_skill_values[3],
+                second_task_skill_values[3],
+                third_task_skill_values[3],
+                fourth_task_skill_values[3],
+            ),
+        ]
+    else:
+        task_skill_bests = [*first_task_skill_values]
+        for member in people[1:]:
+            task_skill_values = task_skill_values_by_person_id[member.id]
+            for task_index, value in enumerate(task_skill_values):
+                if value > task_skill_bests[task_index]:
+                    task_skill_bests[task_index] = value
     skill_score_upper = geometric_mean(task_skill_bests)
 
     return (
@@ -1417,16 +1485,53 @@ def greedy_allocations(
                         )
 
                     first_task_skill_values = task_skill_values_by_person_id[
-                        candidate[0].id
+                        team_signature[0]
                     ]
-                    task_skill_bests = [*first_task_skill_values]
-                    for member in candidate[1:]:
-                        task_skill_values = task_skill_values_by_person_id[
-                            member.id
+                    if len(candidate) == 4 and len(first_task_skill_values) == 4:
+                        second_task_skill_values = task_skill_values_by_person_id[
+                            team_signature[1]
                         ]
-                        for task_index, value in enumerate(task_skill_values):
-                            if value > task_skill_bests[task_index]:
-                                task_skill_bests[task_index] = value
+                        third_task_skill_values = task_skill_values_by_person_id[
+                            team_signature[2]
+                        ]
+                        fourth_task_skill_values = task_skill_values_by_person_id[
+                            team_signature[3]
+                        ]
+                        task_skill_bests = [
+                            max(
+                                first_task_skill_values[0],
+                                second_task_skill_values[0],
+                                third_task_skill_values[0],
+                                fourth_task_skill_values[0],
+                            ),
+                            max(
+                                first_task_skill_values[1],
+                                second_task_skill_values[1],
+                                third_task_skill_values[1],
+                                fourth_task_skill_values[1],
+                            ),
+                            max(
+                                first_task_skill_values[2],
+                                second_task_skill_values[2],
+                                third_task_skill_values[2],
+                                fourth_task_skill_values[2],
+                            ),
+                            max(
+                                first_task_skill_values[3],
+                                second_task_skill_values[3],
+                                third_task_skill_values[3],
+                                fourth_task_skill_values[3],
+                            ),
+                        ]
+                    else:
+                        task_skill_bests = [*first_task_skill_values]
+                        for member in candidate[1:]:
+                            task_skill_values = task_skill_values_by_person_id[
+                                member.id
+                            ]
+                            for task_index, value in enumerate(task_skill_values):
+                                if value > task_skill_bests[task_index]:
+                                    task_skill_bests[task_index] = value
                     skill_score_upper = geometric_mean(task_skill_bests)
 
                     cheap_upper_bound = (
