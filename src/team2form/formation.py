@@ -412,20 +412,54 @@ def shortlist_scorers(
                             social_pair_score
                         )
 
+            def top_partner_average(pair_scores: list[float]) -> float:
+                if partner_count == 1:
+                    return max(pair_scores)
+
+                if partner_count == 2:
+                    top_1 = float('-inf')
+                    top_2 = float('-inf')
+                    for score in pair_scores:
+                        if score > top_1:
+                            top_2 = top_1
+                            top_1 = score
+                        elif score > top_2:
+                            top_2 = score
+                    return (top_1 + top_2) / 2.0
+
+                if partner_count == 3:
+                    top_1 = float('-inf')
+                    top_2 = float('-inf')
+                    top_3 = float('-inf')
+                    for score in pair_scores:
+                        if score > top_1:
+                            top_3 = top_2
+                            top_2 = top_1
+                            top_1 = score
+                        elif score > top_2:
+                            top_3 = top_2
+                            top_2 = score
+                        elif score > top_3:
+                            top_3 = score
+                    return (top_1 + top_2 + top_3) / 3.0
+
+                return (
+                    sum(sorted(pair_scores, reverse=True)[:partner_count])
+                    / partner_count
+                )
+
             if personality_pair_scores_by_person_id is not None:
                 for person_id, pair_scores in (
                     personality_pair_scores_by_person_id.items()
                 ):
-                    personality_potentials[person_id] = (
-                        sum(sorted(pair_scores, reverse=True)[:partner_count])
-                        / partner_count
+                    personality_potentials[person_id] = top_partner_average(
+                        pair_scores
                     )
 
             if social_pair_scores_by_person_id is not None:
                 for person_id, pair_scores in social_pair_scores_by_person_id.items():
-                    social_potentials[person_id] = (
-                        sum(sorted(pair_scores, reverse=True)[:partner_count])
-                        / partner_count
+                    social_potentials[person_id] = top_partner_average(
+                        pair_scores
                     )
 
     def social_potential(person: Person) -> float:
