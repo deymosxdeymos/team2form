@@ -1903,6 +1903,12 @@ def improve_allocations(
             right = allocations[right_index]
             old_left_quality = qualities[left_index]
             old_right_quality = qualities[right_index]
+            pair_product_factor = (
+                current_product
+                / clamped_qualities[left_index]
+                / clamped_qualities[right_index]
+            )
+            pair_sum_base = current_sum - old_left_quality - old_right_quality
             other_min = min(
                 (
                     quality
@@ -1980,16 +1986,12 @@ def improve_allocations(
                             ),
                         )
                         upper_trial_product = (
-                            current_product
-                            / clamped_qualities[left_index]
-                            / clamped_qualities[right_index]
+                            pair_product_factor
                             * max(left_upper_bound, 1e-12)
                             * max(right_upper_bound, 1e-12)
                         )
                         upper_trial_sum = (
-                            current_sum
-                            - old_left_quality
-                            - old_right_quality
+                            pair_sum_base
                             + left_upper_bound
                             + right_upper_bound
                         )
@@ -2028,16 +2030,12 @@ def improve_allocations(
                     )
 
                     trial_product = (
-                        current_product
-                        / clamped_qualities[left_index]
-                        / clamped_qualities[right_index]
+                        pair_product_factor
                         * max(rescored_left.quality, 1e-12)
                         * max(rescored_right.quality, 1e-12)
                     )
                     trial_sum = (
-                        current_sum
-                        - old_left_quality
-                        - old_right_quality
+                        pair_sum_base
                         + rescored_left.quality
                         + rescored_right.quality
                     )
