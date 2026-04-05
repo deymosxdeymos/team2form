@@ -3,7 +3,7 @@
 - Explore a broader `candidate_combinations()` ranked-selection redesign (algorithmic, not micro-tweaks), since many heap/list/comprehension/key-canonicalization micro-optimizations have consistently regressed.
 - Investigate behavior-preserving reductions in `_compat_member_task_analysis` / `_compat_member_priority_order` that remove whole classes of work (not extra caching/branching), while keeping exact tie-breaking semantics.
 - Continue request-scoped immutable-data caching on the hottest score path only (task lookup/task preferences/team social-preference presence/resolved weights proved high leverage); avoid extending caches into colder paths unless profiling justifies it.
-- Re-validate commit `f7bd42e` (single-pass `geometric_mean` + 4-item list hot path, lazy shortlist-scorer construction for >cap tasks only, relevant-people upper-bound prep domains, and tighter skill-upper accumulation loops) when host latency returns to a stable band to confirm gains are not regime-specific.
+- Re-validate commit `e29f294` (single-pass `geometric_mean` + 4-item list hot path, lazy shortlist-scorer construction for >cap tasks only, direct `itertools.combinations` in <=cap pruning path, relevant-people upper-bound prep domains, tighter skill-upper accumulation loops, and pair-level objective arithmetic hoisting in swaps) when host latency returns to a stable band to confirm gains are not regime-specific.
 - Use immediate paired A/B validation (candidate run followed by no-code baseline, or vice versa) for marginal deltas while host variance remains high.
 
 Pruned as stale/tried (do not retry without a materially different approach):
@@ -60,7 +60,6 @@ Pruned as stale/tried (do not retry without a materially different approach):
 - Replacement-phase-only upper-bound pruning variants in `improve_allocations` that add bound overhead without meaningful rescoring reduction.
 - Older social-only two-stage bound helper variant (`social<=1` loose check, then exact social upper bound) outside the current cap+1 implementation.
 - Greedy pre-scored tie handling via top-quality-prefix scan (instead of full `max` key over all pre-scored candidates).
-- Greedy total<=cap direct-combinations bypass (`itertools.combinations`) instead of routing through `candidate_combinations`/shortlist scaffolding.
 - `_compat_member_task_analysis` unique-best-member-index metadata replacing per-candidate `best_value_count + math.isclose` checks.
 - Heuristic seeded incumbent for upper-bound pruning in small tasks (`task_total<=128`) using top `member_scorer` picks.
 - Branch-local key-function definition layout in `_compat_member_priority_order` (define only needed branch key each call).
@@ -81,6 +80,8 @@ Pruned as stale/tried (do not retry without a materially different approach):
 - `_compat_member_task_analysis` 4x4 specialized fast path (manual extraction/unrolled updates) — regressed.
 - `_compat_has_perfect_positive_matching` 4x4 bitmask-specialized fast path — neutral under current noise.
 - Request-order team-signature canonicalization with monotonic fast path (`person_id -> order index`) — neutral/regressed.
+- `_compat_candidate_quality_upper_bound` call-signature specialization (remove optional fallback params/branches; require logs/signature) — no clear win in end-to-end benchmark.
+- Request-scoped task-order-by-hardness cache in `form_teams` (`task_hardness` sort reuse via cached task-id order) — regressed.
 - `geometric_mean(...)` Sequence fast-path rewrite (no list materialization) — regressed in end-to-end benchmark.
 - Threading cheap-stage `task_preference_score`/`skill_score_upper` through candidate tuples and passing them as exact-bound overrides — regressed due extra tuple/branch overhead.
 - Per-task swap-loop upper-bound memoization cache in `improve_allocations` (`team_signature -> upper_bound`) — regressed due cache/key overhead.

@@ -52,16 +52,19 @@ class _TeamQualityComponents:
 
 
 def geometric_mean(values: Iterable[float]) -> float:
+    log = math.log
+    exp = math.exp
+
     if isinstance(values, list) and len(values) == 4:
         first, second, third, fourth = values
         if first <= 0 or second <= 0 or third <= 0 or fourth <= 0:
             return 0.0
-        return math.exp(
+        return exp(
             (
-                math.log(first)
-                + math.log(second)
-                + math.log(third)
-                + math.log(fourth)
+                log(first)
+                + log(second)
+                + log(third)
+                + log(fourth)
             )
             / 4.0
         )
@@ -71,12 +74,12 @@ def geometric_mean(values: Iterable[float]) -> float:
     for value in values:
         if value <= 0:
             return 0.0
-        log_sum += math.log(value)
+        log_sum += log(value)
         count += 1
 
     if count == 0:
         return 0.0
-    return math.exp(log_sum / count)
+    return exp(log_sum / count)
 
 
 def weighted_geometric_mean(values: Iterable[tuple[float, float]]) -> float:
