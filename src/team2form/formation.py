@@ -765,7 +765,7 @@ def _best_scored_shortlist_candidate_with_compat_pruning(
     scored_count = 0
 
     cheap_bounded_candidates: list[
-        tuple[float, int, tuple[Person, ...], tuple[str, ...]]
+        tuple[float, float, int, tuple[Person, ...], tuple[str, ...]]
     ] = []
     combinations = itertools.combinations(shortlist, task.team_size)
     for index, candidate in enumerate(combinations):
@@ -848,15 +848,19 @@ def _best_scored_shortlist_candidate_with_compat_pruning(
                         task_skill_bests[task_index] = value
         skill_score_upper = geometric_mean(task_skill_bests)
 
-        cheap_upper_bound = (
+        non_social_upper_bound = (
             resolved_weights.alpha * skill_score_upper
             + resolved_weights.beta * personality_score
             + resolved_weights.gamma * task_preference_score
-            + resolved_weights.delta * 1.0
+        )
+        cheap_upper_bound = (
+            non_social_upper_bound
+            + resolved_weights.delta
         )
         cheap_bounded_candidates.append(
             (
                 cheap_upper_bound,
+                non_social_upper_bound,
                 index,
                 candidate,
                 team_signature,
@@ -866,33 +870,33 @@ def _best_scored_shortlist_candidate_with_compat_pruning(
     cheap_bounded_candidates.sort(
         key=lambda entry: (
             entry[0],
-            -entry[1],
+            -entry[2],
         ),
         reverse=True,
     )
 
-    for cheap_upper_bound, index, candidate, team_signature in (
-        cheap_bounded_candidates
-    ):
+    for (
+        cheap_upper_bound,
+        non_social_upper_bound,
+        index,
+        candidate,
+        team_signature,
+    ) in cheap_bounded_candidates:
         if (
             best is not None
             and _objective_component_less(cheap_upper_bound, best_quality)
         ):
             break
 
-        exact_upper_bound = _compat_candidate_quality_upper_bound(
+        social_score_upper = _compat_candidate_social_upper_bound(
             people=candidate,
-            task_preferences=task_preferences,
-            task_preference_default=task_preference_default,
-            task_preference_logs_by_person_id=(
-                task_preference_logs_by_person_id
-            ),
-            task_skill_values_by_person_id=task_skill_values_by_person_id,
             team_signature=team_signature,
-            resolved_weights=resolved_weights,
-            personality_cache=personality_cache,
             social_cache=social_cache,
             social_preference_presence_cache=social_preference_presence_cache,
+        )
+        exact_upper_bound = (
+            non_social_upper_bound
+            + (resolved_weights.delta * social_score_upper)
         )
         if (
             best is not None
@@ -1154,6 +1158,38 @@ def cached_score_team(
     return scored
 
 
+def _compat_candidate_social_upper_bound(
+    *,
+    people: tuple[Person, ...],
+    team_signature: tuple[str, ...] | None,
+    social_cache: dict[tuple[float, tuple[str, ...]], float],
+    social_preference_presence_cache: dict[tuple[str, ...], bool],
+) -> float:
+    if team_signature is None:
+        team_signature = tuple(sorted(member.id for member in people))
+
+    has_team_social_preferences = social_preference_presence_cache.get(team_signature)
+    if has_team_social_preferences is None:
+        teammate_ids = {member.id for member in people}
+        has_team_social_preferences = any(
+            has_explicit_social_preferences(member, teammate_ids)
+            for member in people
+        )
+        social_preference_presence_cache[team_signature] = (
+            has_team_social_preferences
+        )
+
+    if not has_team_social_preferences:
+        return 0.0
+
+    social_cache_key = (0.5, team_signature)
+    social_score_upper = social_cache.get(social_cache_key)
+    if social_score_upper is None:
+        social_score_upper = team_social_score(people, compat_default=0.5)
+        social_cache[social_cache_key] = social_score_upper
+    return social_score_upper
+
+
 def _compat_candidate_quality_upper_bound(
     *,
     people: tuple[Person, ...],
@@ -1176,24 +1212,12 @@ def _compat_candidate_quality_upper_bound(
         personality_score = team_personality_score(people, mode=Mode.COMPAT)
         personality_cache[personality_cache_key] = personality_score
 
-    has_team_social_preferences = social_preference_presence_cache.get(team_signature)
-    if has_team_social_preferences is None:
-        teammate_ids = {member.id for member in people}
-        has_team_social_preferences = any(
-            has_explicit_social_preferences(member, teammate_ids)
-            for member in people
-        )
-        social_preference_presence_cache[team_signature] = (
-            has_team_social_preferences
-        )
-
-    social_score_upper = 0.0
-    if has_team_social_preferences:
-        social_cache_key = (0.5, team_signature)
-        social_score_upper = social_cache.get(social_cache_key)
-        if social_score_upper is None:
-            social_score_upper = team_social_score(people, compat_default=0.5)
-            social_cache[social_cache_key] = social_score_upper
+    social_score_upper = _compat_candidate_social_upper_bound(
+        people=people,
+        team_signature=team_signature,
+        social_cache=social_cache,
+        social_preference_presence_cache=social_preference_presence_cache,
+    )
 
     if task_preference_logs_by_person_id is None:
         task_preference_score = _task_preference_score(
@@ -1484,7 +1508,13 @@ def greedy_allocations(
                 best_ids: tuple[str, ...] | None = None
 
                 cheap_bounded_candidates: list[
-                    tuple[float, int, tuple[Person, ...], tuple[str, ...]]
+                    tuple[
+                        float,
+                        float,
+                        int,
+                        tuple[Person, ...],
+                        tuple[str, ...],
+                    ]
                 ] = []
                 for index, candidate in enumerate(candidates):
                     if len(candidate) == 4:
@@ -1571,15 +1601,19 @@ def greedy_allocations(
                                     task_skill_bests[task_index] = value
                     skill_score_upper = geometric_mean(task_skill_bests)
 
-                    cheap_upper_bound = (
+                    non_social_upper_bound = (
                         resolved_weights.alpha * skill_score_upper
                         + resolved_weights.beta * personality_score
                         + resolved_weights.gamma * task_preference_score
-                        + resolved_weights.delta * 1.0
+                    )
+                    cheap_upper_bound = (
+                        non_social_upper_bound
+                        + resolved_weights.delta
                     )
                     cheap_bounded_candidates.append(
                         (
                             cheap_upper_bound,
+                            non_social_upper_bound,
                             index,
                             candidate,
                             team_signature,
@@ -1589,14 +1623,18 @@ def greedy_allocations(
                 cheap_bounded_candidates.sort(
                     key=lambda entry: (
                         entry[0],
-                        -entry[1],
+                        -entry[2],
                     ),
                     reverse=True,
                 )
 
-                for cheap_upper_bound, _index, candidate, team_signature in (
-                    cheap_bounded_candidates
-                ):
+                for (
+                    cheap_upper_bound,
+                    non_social_upper_bound,
+                    _index,
+                    candidate,
+                    team_signature,
+                ) in cheap_bounded_candidates:
                     if (
                         best is not None
                         and _objective_component_less(
@@ -1606,21 +1644,17 @@ def greedy_allocations(
                     ):
                         break
 
-                    upper_bound = _compat_candidate_quality_upper_bound(
+                    social_score_upper = _compat_candidate_social_upper_bound(
                         people=candidate,
-                        task_preferences=task_preferences,
-                        task_preference_default=task_preference_default,
-                        task_preference_logs_by_person_id=task_preference_logs,
-                        task_skill_values_by_person_id=(
-                            task_skill_values_by_person_id
-                        ),
                         team_signature=team_signature,
-                        resolved_weights=resolved_weights,
-                        personality_cache=personality_cache,
                         social_cache=social_cache,
                         social_preference_presence_cache=(
                             social_preference_presence_cache
                         ),
+                    )
+                    upper_bound = (
+                        non_social_upper_bound
+                        + (resolved_weights.delta * social_score_upper)
                     )
                     if (
                         best is not None
