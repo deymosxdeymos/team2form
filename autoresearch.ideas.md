@@ -3,7 +3,7 @@
 - Explore a broader `candidate_combinations()` ranked-selection redesign (algorithmic, not micro-tweaks), since many heap/list/comprehension/key-canonicalization micro-optimizations have consistently regressed.
 - Investigate behavior-preserving reductions in `_compat_member_task_analysis` / `_compat_member_priority_order` that remove whole classes of work (not extra caching/branching), while keeping exact tie-breaking semantics.
 - Continue request-scoped immutable-data caching on the hottest score path only (task lookup/task preferences/team social-preference presence/resolved weights proved high leverage); avoid extending caches into colder paths unless profiling justifies it.
-- Re-validate commit `3aa0fc3` (cap+1 scored-shortlist pruning + bound-sorted two-stage admissible filtering + tighter geometric skill upper bound + upper-bound task-preference log caching) when host latency returns to the low-80ms band to confirm the gain is not regime-specific.
+- Re-validate commit `e33e541` (two-stage admissible filtering in COMPAT greedy paths + swap-phase admissible pruning in improve_allocations, on top of prior keeps) when host latency returns to the low-80ms band to confirm the gain is not regime-specific.
 
 Pruned as stale/tried (do not retry without a materially different approach):
 - Per-shortlist or global caching layers for explicit social-preference pair checks.
@@ -53,10 +53,10 @@ Pruned as stale/tried (do not retry without a materially different approach):
 - `max_skills_per_member == 1` branch split in `_assign_task_skills_compat` to bypass per-member mask-loop scaffolding.
 - Precomputed `has_member_without_positive` flag plumbed from `_compat_member_task_analysis` into `_assign_task_skills_compat`.
 - Candidate-first-pass score reuse maps (`candidate -> ScoredAllocation`), including member-id/object-id keyed variants and eager total<=cap scorer invocation.
-- Generic greedy bound-precompute+sort rewrites outside the specialized scored-shortlist cap+1 path (keep only the current cap+1 implementation).
+- Broad candidate-combination redesigns that bypass the current two-stage admissible COMPAT pruning logic without a formal tie/selection-equivalence argument.
 - Early `_assign_task_skills_compat` fast-fail on `any(best_task_value <= 0)` that returns fallback assignments before member-priority/assignment loops.
 - Inlined nested-loop social-presence detection inside `_compat_candidate_quality_upper_bound` (replacing helper-based `any(...)`).
-- Admissible upper-bound objective pruning inside `improve_allocations` replacement/swap loops.
+- Replacement-phase-only upper-bound pruning variants in `improve_allocations` that add bound overhead without meaningful rescoring reduction.
 - Older social-only two-stage bound helper variant (`social<=1` loose check, then exact social upper bound) outside the current cap+1 implementation.
 - Greedy pre-scored tie handling via top-quality-prefix scan (instead of full `max` key over all pre-scored candidates).
 - Greedy total<=cap direct-combinations bypass (`itertools.combinations`) instead of routing through `candidate_combinations`/shortlist scaffolding.
@@ -80,3 +80,5 @@ Pruned as stale/tried (do not retry without a materially different approach):
 - `_compat_member_task_analysis` 4x4 specialized fast path (manual extraction/unrolled updates) — regressed.
 - `_compat_has_perfect_positive_matching` 4x4 bitmask-specialized fast path — neutral under current noise.
 - Request-order team-signature canonicalization with monotonic fast path (`person_id -> order index`) — neutral/regressed.
+- `geometric_mean(...)` Sequence fast-path rewrite (no list materialization) — regressed in end-to-end benchmark.
+- Threading cheap-stage `task_preference_score`/`skill_score_upper` through candidate tuples and passing them as exact-bound overrides — regressed due extra tuple/branch overhead.
