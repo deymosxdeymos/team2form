@@ -756,12 +756,12 @@ def _best_scored_shortlist_candidate_with_compat_pruning(
                 task_preference_log_sum / len(candidate)
             )
 
-        task_skill_rows = [
-            task_skill_values_by_person_id[member.id]
-            for member in candidate
+        first_task_skill_values = task_skill_values_by_person_id[
+            candidate[0].id
         ]
-        task_skill_bests = [0.0] * len(task_skill_rows[0])
-        for task_skill_values in task_skill_rows:
+        task_skill_bests = [*first_task_skill_values]
+        for member in candidate[1:]:
+            task_skill_values = task_skill_values_by_person_id[member.id]
             for task_index, value in enumerate(task_skill_values):
                 if value > task_skill_bests[task_index]:
                     task_skill_bests[task_index] = value
@@ -1133,9 +1133,10 @@ def _compat_candidate_quality_upper_bound(
                 task_preference_log_sum / len(people)
             )
 
-    task_skill_rows = [task_skill_values_by_person_id[member.id] for member in people]
-    task_skill_bests = [0.0] * len(task_skill_rows[0])
-    for task_skill_values in task_skill_rows:
+    first_task_skill_values = task_skill_values_by_person_id[people[0].id]
+    task_skill_bests = [*first_task_skill_values]
+    for member in people[1:]:
+        task_skill_values = task_skill_values_by_person_id[member.id]
         for task_index, value in enumerate(task_skill_values):
             if value > task_skill_bests[task_index]:
                 task_skill_bests[task_index] = value
@@ -1391,12 +1392,14 @@ def greedy_allocations(
                             task_preference_log_sum / len(candidate)
                         )
 
-                    task_skill_rows = [
-                        task_skill_values_by_person_id[member.id]
-                        for member in candidate
+                    first_task_skill_values = task_skill_values_by_person_id[
+                        candidate[0].id
                     ]
-                    task_skill_bests = [0.0] * len(task_skill_rows[0])
-                    for task_skill_values in task_skill_rows:
+                    task_skill_bests = [*first_task_skill_values]
+                    for member in candidate[1:]:
+                        task_skill_values = task_skill_values_by_person_id[
+                            member.id
+                        ]
                         for task_index, value in enumerate(task_skill_values):
                             if value > task_skill_bests[task_index]:
                                 task_skill_bests[task_index] = value
