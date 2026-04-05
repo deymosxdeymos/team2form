@@ -1341,21 +1341,27 @@ def greedy_allocations(
 
         if best is None:
             pre_scored_candidates: list[tuple[tuple[Person, ...], float]] = []
-            candidates = candidate_combinations(
-                people=remaining_people,
-                team_size=task.team_size,
-                max_candidate_teams=max_candidate_teams,
-                shortlist_padding=shortlist_padding,
-                scorer=member_scorer,
-                alternate_scorers=alternate_scorers,
-                combination_scorer=(
-                    lambda candidate: scored_candidate(candidate).quality
-                ),
-                scored_combinations=pre_scored_candidates,
-            )
-            if request.init_random:
-                candidates = list(candidates)
-                randomizer.shuffle(candidates)
+            if use_upper_bound_pruning:
+                candidates: Iterable[tuple[Person, ...]] = itertools.combinations(
+                    remaining_people,
+                    task.team_size,
+                )
+            else:
+                candidates = candidate_combinations(
+                    people=remaining_people,
+                    team_size=task.team_size,
+                    max_candidate_teams=max_candidate_teams,
+                    shortlist_padding=shortlist_padding,
+                    scorer=member_scorer,
+                    alternate_scorers=alternate_scorers,
+                    combination_scorer=(
+                        lambda candidate: scored_candidate(candidate).quality
+                    ),
+                    scored_combinations=pre_scored_candidates,
+                )
+                if request.init_random:
+                    candidates = list(candidates)
+                    randomizer.shuffle(candidates)
 
             if use_upper_bound_pruning and resolved_weights is not None:
                 assert task_preference_logs_by_person_id is not None

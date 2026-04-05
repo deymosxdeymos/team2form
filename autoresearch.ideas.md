@@ -3,7 +3,7 @@
 - Explore a broader `candidate_combinations()` ranked-selection redesign (algorithmic, not micro-tweaks), since many heap/list/comprehension/key-canonicalization micro-optimizations have consistently regressed.
 - Investigate behavior-preserving reductions in `_compat_member_task_analysis` / `_compat_member_priority_order` that remove whole classes of work (not extra caching/branching), while keeping exact tie-breaking semantics.
 - Continue request-scoped immutable-data caching on the hottest score path only (task lookup/task preferences/team social-preference presence/resolved weights proved high leverage); avoid extending caches into colder paths unless profiling justifies it.
-- Re-validate commit `e82a215` (single-pass `geometric_mean`, lazy shortlist-scorer construction for >cap tasks only, relevant-people upper-bound prep domains, and tighter skill-upper accumulation loops) when host latency returns to a stable band to confirm gains are not regime-specific.
+- Re-validate commit `f7bd42e` (single-pass `geometric_mean` + 4-item list hot path, lazy shortlist-scorer construction for >cap tasks only, relevant-people upper-bound prep domains, and tighter skill-upper accumulation loops) when host latency returns to a stable band to confirm gains are not regime-specific.
 - Use immediate paired A/B validation (candidate run followed by no-code baseline, or vice versa) for marginal deltas while host variance remains high.
 
 Pruned as stale/tried (do not retry without a materially different approach):
