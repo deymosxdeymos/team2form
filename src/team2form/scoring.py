@@ -331,6 +331,83 @@ def team_personality_score(team: Sequence[Person], *, mode: Mode) -> float:
         )
         return diversity + best_paper_etj + best_paper_introvert + gender_bonus
 
+    if mode == Mode.COMPAT and len(team) == 4:
+        first_member, second_member, third_member, fourth_member = team
+        first_personality = first_member.personality
+        second_personality = second_member.personality
+        third_personality = third_member.personality
+        fourth_personality = fourth_member.personality
+
+        best_compat_etj = 0.0
+        best_compat_introvert = 0.0
+        for personality in (
+            first_personality,
+            second_personality,
+            third_personality,
+            fourth_personality,
+        ):
+            if (
+                personality.ei > 0
+                and personality.tf > 0
+                and personality.pj > 0
+            ):
+                compat_etj = (
+                    personality.ei + personality.tf + personality.pj
+                ) / 3.0
+                if compat_etj > best_compat_etj:
+                    best_compat_etj = compat_etj
+
+            introvert_component = (
+                -personality.ei
+                if personality.ei < 0
+                else 0.0
+            )
+            if introvert_component > best_compat_introvert:
+                best_compat_introvert = introvert_component
+
+        first_sn = first_personality.sn
+        second_sn = second_personality.sn
+        third_sn = third_personality.sn
+        fourth_sn = fourth_personality.sn
+        sn_mean = (
+            first_sn + second_sn + third_sn + fourth_sn
+        ) / 4.0
+        sn_stddev = math.sqrt(
+            (
+                (first_sn - sn_mean) ** 2
+                + (second_sn - sn_mean) ** 2
+                + (third_sn - sn_mean) ** 2
+                + (fourth_sn - sn_mean) ** 2
+            )
+            / 4.0
+        )
+
+        first_tf = first_personality.tf
+        second_tf = second_personality.tf
+        third_tf = third_personality.tf
+        fourth_tf = fourth_personality.tf
+        tf_mean = (
+            first_tf + second_tf + third_tf + fourth_tf
+        ) / 4.0
+        tf_stddev = math.sqrt(
+            (
+                (first_tf - tf_mean) ** 2
+                + (second_tf - tf_mean) ** 2
+                + (third_tf - tf_mean) ** 2
+                + (fourth_tf - tf_mean) ** 2
+            )
+            / 4.0
+        )
+
+        diversity = 0.75 * sn_stddev * tf_stddev
+        gender_bonus = _compat_gender_bonus(team)
+        return (
+            diversity
+            + (0.2475 * best_compat_etj)
+            + (0.2475 * best_compat_introvert)
+            + gender_bonus
+        )
+
     sn_values: list[float] = []
     tf_values: list[float] = []
     declared_genders: set[str] = set()
