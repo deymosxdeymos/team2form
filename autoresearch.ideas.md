@@ -3,7 +3,8 @@
 - Explore a broader `candidate_combinations()` ranked-selection redesign (algorithmic, not micro-tweaks), since many heap/list/comprehension/key-canonicalization micro-optimizations have consistently regressed.
 - Investigate behavior-preserving reductions in `_compat_member_task_analysis` / `_compat_member_priority_order` that remove whole classes of work (not extra caching/branching), while keeping exact tie-breaking semantics.
 - Continue request-scoped immutable-data caching on the hottest score path only (task lookup/task preferences/team social-preference presence/resolved weights proved high leverage); avoid extending caches into colder paths unless profiling justifies it.
-- Re-validate commit `e33e541` (two-stage admissible filtering in COMPAT greedy paths + swap-phase admissible pruning in improve_allocations, on top of prior keeps) when host latency returns to the low-80ms band to confirm the gain is not regime-specific.
+- Re-validate commit `e82a215` (single-pass `geometric_mean`, lazy shortlist-scorer construction for >cap tasks only, relevant-people upper-bound prep domains, and tighter skill-upper accumulation loops) when host latency returns to a stable band to confirm gains are not regime-specific.
+- Use immediate paired A/B validation (candidate run followed by no-code baseline, or vice versa) for marginal deltas while host variance remains high.
 
 Pruned as stale/tried (do not retry without a materially different approach):
 - Per-shortlist or global caching layers for explicit social-preference pair checks.
@@ -82,3 +83,7 @@ Pruned as stale/tried (do not retry without a materially different approach):
 - Request-order team-signature canonicalization with monotonic fast path (`person_id -> order index`) — neutral/regressed.
 - `geometric_mean(...)` Sequence fast-path rewrite (no list materialization) — regressed in end-to-end benchmark.
 - Threading cheap-stage `task_preference_score`/`skill_score_upper` through candidate tuples and passing them as exact-bound overrides — regressed due extra tuple/branch overhead.
+- Per-task swap-loop upper-bound memoization cache in `improve_allocations` (`team_signature -> upper_bound`) — regressed due cache/key overhead.
+- Collapsing two-stage greedy pruning into a single social-inclusive bound pass (compute social upper during cheap stage, remove exact-stage helper call) — regressed and increased complexity.
+- Single-pass swapped-team+signature construction rewrite in `improve_allocations` swap loop — neutral/slightly worse in end-to-end runs.
+- Request-scoped cached COMPAT bound-prep layer (`_request_compat_bound_data_by_task_id`) — no clear win under current noise versus added complexity.

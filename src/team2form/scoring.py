@@ -52,6 +52,20 @@ class _TeamQualityComponents:
 
 
 def geometric_mean(values: Iterable[float]) -> float:
+    if isinstance(values, list) and len(values) == 4:
+        first, second, third, fourth = values
+        if first <= 0 or second <= 0 or third <= 0 or fourth <= 0:
+            return 0.0
+        return math.exp(
+            (
+                math.log(first)
+                + math.log(second)
+                + math.log(third)
+                + math.log(fourth)
+            )
+            / 4.0
+        )
+
     count = 0
     log_sum = 0.0
     for value in values:
