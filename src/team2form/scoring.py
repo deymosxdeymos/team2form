@@ -22,6 +22,8 @@ from .weights import Weights, resolve_weights
 
 EPSILON = 1e-12
 MAX_EXACT_PARTITIONED_TASK_SKILLS = 12
+_COMPAT_GENDER_BONUS_BALANCED = 0.075
+_COMPAT_GENDER_BONUS_ONE_UNKNOWN = 0.075 * math.sin(math.pi * 0.25)
 
 _COMPAT_MEMBER_TASK_VALUES_CACHE: dict[
     tuple[int, tuple[str, ...]],
@@ -388,6 +390,17 @@ def team_personality_score(team: Sequence[Person], *, mode: Mode) -> float:
 
 
 def _compat_gender_bonus(team: Sequence[Person]) -> float:
+    if len(team) == 2:
+        first_gender = team[0].gender
+        second_gender = team[1].gender
+        if first_gender == second_gender:
+            if first_gender is None:
+                return _COMPAT_GENDER_BONUS_BALANCED
+            return 0.0
+        if first_gender is None or second_gender is None:
+            return _COMPAT_GENDER_BONUS_ONE_UNKNOWN
+        return _COMPAT_GENDER_BONUS_BALANCED
+
     female_count = sum(member.gender == 'FEMALE' for member in team)
     male_count = sum(member.gender == 'MALE' for member in team)
     missing_count = len(team) - female_count - male_count

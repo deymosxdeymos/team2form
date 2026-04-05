@@ -3,7 +3,7 @@
 - Explore a broader `candidate_combinations()` ranked-selection redesign (algorithmic, not micro-tweaks), since many heap/list/comprehension/key-canonicalization micro-optimizations have consistently regressed.
 - Investigate behavior-preserving reductions in `_compat_member_task_analysis` / `_compat_member_priority_order` that remove whole classes of work (not extra caching/branching), while keeping exact tie-breaking semantics.
 - Continue request-scoped immutable-data caching on the hottest score path only (task lookup/task preferences/team social-preference presence/resolved weights proved high leverage); avoid extending caches into colder paths unless profiling justifies it.
-- Re-validate commit `e35386b` (single-pass `geometric_mean` + 4-item list hot path + local log/exp binding, lazy shortlist-scorer construction for >cap tasks only, direct `itertools.combinations` in <=cap pruning path, 4-member team-signature fast paths in pruning/swap bounds, 4x4 skill-upper aggregation with local-`max` binding, and top-k shortlist pair-potential aggregation fast paths) when host latency returns to a stable band to confirm gains are not regime-specific.
+- Re-validate commit `2b5d9c3` (single-pass `geometric_mean` + 4-item list hot path + local log/exp binding, lazy shortlist-scorer construction for >cap tasks only, direct `itertools.combinations` in <=cap pruning path, 4-member team-signature fast paths in pruning/swap bounds, 4x4 skill-upper aggregation with local-`max` binding, top-k shortlist pair-potential aggregation fast paths, and specialized 2-member personality/social scoring paths) when host latency returns to a stable band to confirm gains are not regime-specific.
 - Use immediate paired A/B validation (candidate run followed by no-code baseline, or vice versa) for marginal deltas while host variance remains high.
 
 Pruned as stale/tried (do not retry without a materially different approach):
@@ -95,3 +95,4 @@ Pruned as stale/tried (do not retry without a materially different approach):
 - 4x4 skill-upper direct geometric-mean composition (avoid `task_skill_bests` list + `geometric_mean(...)`) — regressed.
 - In-place `allocations` mutation in `improve_allocations` (remove accepted-move `allocations.copy()`) — inconclusive/near-noise.
 - Index-based 4-member swap-team tuple construction in `improve_allocations` (replace tuple-comprehension/id-match generation) — regressed.
+- Inlined two-member COMPAT gender-bonus arithmetic inside `team_personality_score` fast path (replace `_compat_gender_bonus` call) — regressed.
