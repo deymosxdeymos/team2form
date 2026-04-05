@@ -1965,6 +1965,10 @@ def improve_allocations(
             dict[str, tuple[float, ...]],
         ],
     ] = {}
+    compat_swap_upper_bound_cache_by_task_id: dict[
+        str,
+        dict[tuple[str, ...], float],
+    ] = {}
     compat_bound_resolved_weights = None
     compat_bound_personality_cache: dict[tuple[Mode, tuple[str, ...]], float] = {}
     compat_bound_social_cache: dict[tuple[float, tuple[str, ...]], float] = {}
@@ -2015,6 +2019,7 @@ def improve_allocations(
                 task_preference_logs_by_person_id,
                 task_skill_values_by_person_id,
             )
+            compat_swap_upper_bound_cache_by_task_id[task_id] = {}
 
     improved = True
     rounds = 0
@@ -2163,42 +2168,73 @@ def improve_allocations(
                             right_task_skill_values_by_person_id,
                         ) = compat_swap_bound_data_by_task_id[right.task_id]
 
-                        left_upper_bound = _compat_candidate_quality_upper_bound(
-                            people=swapped_left,
-                            task_preferences=left_task_preferences,
-                            task_preference_default=left_task_preference_default,
-                            task_preference_logs_by_person_id=(
-                                left_task_preference_logs_by_person_id
-                            ),
-                            task_skill_values_by_person_id=(
-                                left_task_skill_values_by_person_id
-                            ),
-                            team_signature=swapped_left_signature,
-                            resolved_weights=compat_bound_resolved_weights,
-                            personality_cache=compat_bound_personality_cache,
-                            social_cache=compat_bound_social_cache,
-                            social_preference_presence_cache=(
-                                compat_bound_social_presence_cache
-                            ),
+                        left_upper_bound_cache = (
+                            compat_swap_upper_bound_cache_by_task_id[left.task_id]
                         )
-                        right_upper_bound = _compat_candidate_quality_upper_bound(
-                            people=swapped_right,
-                            task_preferences=right_task_preferences,
-                            task_preference_default=right_task_preference_default,
-                            task_preference_logs_by_person_id=(
-                                right_task_preference_logs_by_person_id
-                            ),
-                            task_skill_values_by_person_id=(
-                                right_task_skill_values_by_person_id
-                            ),
-                            team_signature=swapped_right_signature,
-                            resolved_weights=compat_bound_resolved_weights,
-                            personality_cache=compat_bound_personality_cache,
-                            social_cache=compat_bound_social_cache,
-                            social_preference_presence_cache=(
-                                compat_bound_social_presence_cache
-                            ),
+                        left_upper_bound = left_upper_bound_cache.get(
+                            swapped_left_signature
                         )
+                        if left_upper_bound is None:
+                            left_upper_bound = _compat_candidate_quality_upper_bound(
+                                people=swapped_left,
+                                task_preferences=left_task_preferences,
+                                task_preference_default=(
+                                    left_task_preference_default
+                                ),
+                                task_preference_logs_by_person_id=(
+                                    left_task_preference_logs_by_person_id
+                                ),
+                                task_skill_values_by_person_id=(
+                                    left_task_skill_values_by_person_id
+                                ),
+                                team_signature=swapped_left_signature,
+                                resolved_weights=compat_bound_resolved_weights,
+                                personality_cache=compat_bound_personality_cache,
+                                social_cache=compat_bound_social_cache,
+                                social_preference_presence_cache=(
+                                    compat_bound_social_presence_cache
+                                ),
+                            )
+                            left_upper_bound_cache[
+                                swapped_left_signature
+                            ] = left_upper_bound
+
+                        right_upper_bound_cache = (
+                            compat_swap_upper_bound_cache_by_task_id[right.task_id]
+                        )
+                        right_upper_bound = right_upper_bound_cache.get(
+                            swapped_right_signature
+                        )
+                        if right_upper_bound is None:
+                            right_upper_bound = (
+                                _compat_candidate_quality_upper_bound(
+                                    people=swapped_right,
+                                    task_preferences=right_task_preferences,
+                                    task_preference_default=(
+                                        right_task_preference_default
+                                    ),
+                                    task_preference_logs_by_person_id=(
+                                        right_task_preference_logs_by_person_id
+                                    ),
+                                    task_skill_values_by_person_id=(
+                                        right_task_skill_values_by_person_id
+                                    ),
+                                    team_signature=swapped_right_signature,
+                                    resolved_weights=(
+                                        compat_bound_resolved_weights
+                                    ),
+                                    personality_cache=(
+                                        compat_bound_personality_cache
+                                    ),
+                                    social_cache=compat_bound_social_cache,
+                                    social_preference_presence_cache=(
+                                        compat_bound_social_presence_cache
+                                    ),
+                                )
+                            )
+                            right_upper_bound_cache[
+                                swapped_right_signature
+                            ] = right_upper_bound
                         upper_trial_product = (
                             pair_product_factor
                             * max(left_upper_bound, 1e-12)
