@@ -647,9 +647,20 @@ def _best_scored_shortlist_candidate_with_compat_pruning(
     all_equal = True
     scored_count = 0
 
-    cheap_bounded_candidates: list[tuple[float, int, tuple[Person, ...]]] = []
+    cheap_bounded_candidates: list[
+        tuple[float, int, tuple[Person, ...], tuple[str, ...]]
+    ] = []
     combinations = itertools.combinations(shortlist, task.team_size)
     for index, candidate in enumerate(combinations):
+        team_signature = tuple(member.id for member in candidate)
+        personality_cache_key = (Mode.COMPAT, team_signature)
+        personality_score = personality_cache.get(personality_cache_key)
+        if personality_score is None:
+            personality_score = team_personality_score(
+                candidate,
+                mode=Mode.COMPAT,
+            )
+            personality_cache[personality_cache_key] = personality_score
         task_preference_log_sum = 0.0
         for member in candidate:
             task_preference_log = task_preference_logs_by_person_id[member.id]
@@ -675,11 +686,18 @@ def _best_scored_shortlist_candidate_with_compat_pruning(
 
         cheap_upper_bound = (
             resolved_weights.alpha * skill_score_upper
-            + resolved_weights.beta * 1.32
+            + resolved_weights.beta * personality_score
             + resolved_weights.gamma * task_preference_score
             + resolved_weights.delta * 1.0
         )
-        cheap_bounded_candidates.append((cheap_upper_bound, index, candidate))
+        cheap_bounded_candidates.append(
+            (
+                cheap_upper_bound,
+                index,
+                candidate,
+                team_signature,
+            )
+        )
 
     cheap_bounded_candidates.sort(
         key=lambda entry: (
@@ -689,7 +707,9 @@ def _best_scored_shortlist_candidate_with_compat_pruning(
         reverse=True,
     )
 
-    for cheap_upper_bound, index, candidate in cheap_bounded_candidates:
+    for cheap_upper_bound, index, candidate, team_signature in (
+        cheap_bounded_candidates
+    ):
         if (
             best is not None
             and _objective_component_less(cheap_upper_bound, best_quality)
@@ -704,7 +724,7 @@ def _best_scored_shortlist_candidate_with_compat_pruning(
                 task_preference_logs_by_person_id
             ),
             task_skill_values_by_person_id=task_skill_values_by_person_id,
-            team_signature=tuple(member.id for member in candidate),
+            team_signature=team_signature,
             resolved_weights=resolved_weights,
             personality_cache=personality_cache,
             social_cache=social_cache,

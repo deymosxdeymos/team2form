@@ -3,7 +3,7 @@
 - Explore a broader `candidate_combinations()` ranked-selection redesign (algorithmic, not micro-tweaks), since many heap/list/comprehension/key-canonicalization micro-optimizations have consistently regressed.
 - Investigate behavior-preserving reductions in `_compat_member_task_analysis` / `_compat_member_priority_order` that remove whole classes of work (not extra caching/branching), while keeping exact tie-breaking semantics.
 - Continue request-scoped immutable-data caching on the hottest score path only (task lookup/task preferences/team social-preference presence/resolved weights proved high leverage); avoid extending caches into colder paths unless profiling justifies it.
-- Re-validate commit `c5f708d` (cap+1 scored-shortlist pruning + tighter geometric skill upper bound + upper-bound task-preference log caching on top of prior keeps) when host latency returns to the low-80ms band to confirm the gain is not regime-specific.
+- Re-validate commit `3aa0fc3` (cap+1 scored-shortlist pruning + bound-sorted two-stage admissible filtering + tighter geometric skill upper bound + upper-bound task-preference log caching) when host latency returns to the low-80ms band to confirm the gain is not regime-specific.
 
 Pruned as stale/tried (do not retry without a materially different approach):
 - Per-shortlist or global caching layers for explicit social-preference pair checks.
@@ -57,7 +57,7 @@ Pruned as stale/tried (do not retry without a materially different approach):
 - Early `_assign_task_skills_compat` fast-fail on `any(best_task_value <= 0)` that returns fallback assignments before member-priority/assignment loops.
 - Inlined nested-loop social-presence detection inside `_compat_candidate_quality_upper_bound` (replacing helper-based `any(...)`).
 - Admissible upper-bound objective pruning inside `improve_allocations` replacement/swap loops.
-- Two-stage greedy bound helper (`social<=1` loose check, then exact social upper bound) before full upper-bound evaluation.
+- Older social-only two-stage bound helper variant (`social<=1` loose check, then exact social upper bound) outside the current cap+1 implementation.
 - Greedy pre-scored tie handling via top-quality-prefix scan (instead of full `max` key over all pre-scored candidates).
 - Greedy total<=cap direct-combinations bypass (`itertools.combinations`) instead of routing through `candidate_combinations`/shortlist scaffolding.
 - `_compat_member_task_analysis` unique-best-member-index metadata replacing per-candidate `best_value_count + math.isclose` checks.
