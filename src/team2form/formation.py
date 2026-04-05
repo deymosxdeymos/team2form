@@ -1666,6 +1666,66 @@ def improve_allocations(
     swap_rounds: int,
     score_cache: dict[ScoreCacheKey, ScoredAllocation],
 ) -> list[ScoredAllocation]:
+    compat_swap_bound_data_by_task_id: dict[
+        str,
+        tuple[
+            dict[str, float],
+            float,
+            dict[str, float | None],
+            dict[str, tuple[float, ...]],
+        ],
+    ] = {}
+    compat_bound_resolved_weights = None
+    compat_bound_personality_cache: dict[tuple[Mode, tuple[str, ...]], float] = {}
+    compat_bound_social_cache: dict[tuple[float, tuple[str, ...]], float] = {}
+    compat_bound_social_presence_cache: dict[tuple[str, ...], bool] = {}
+    if mode == Mode.COMPAT and score_team is _ORIGINAL_SCORE_TEAM:
+        compat_bound_resolved_weights = _request_resolved_weights(
+            request,
+            mode=mode,
+            preset=preset,
+            normalize_weights=normalize_weights,
+        )
+        (
+            compat_bound_personality_cache,
+            compat_bound_social_cache,
+            compat_bound_social_presence_cache,
+        ) = _request_team_component_caches(request)
+        tasks_by_id = _request_tasks_by_id(request)
+        task_preferences_by_task_id = _request_task_preferences_by_task_id(request)
+        for task_id in {allocation.task_id for allocation in allocations}:
+            task = tasks_by_id[task_id]
+            task_preferences = task_preferences_by_task_id[task_id]
+            task_preference_default = 0.0 if not task_preferences else 0.5
+            task_preference_logs_by_person_id: dict[str, float | None] = {}
+            for person in request.people:
+                task_preference = task_preferences.get(
+                    person.id,
+                    task_preference_default,
+                )
+                if task_preference <= 0:
+                    task_preference_logs_by_person_id[person.id] = None
+                    continue
+                task_preference_logs_by_person_id[person.id] = math.log(
+                    task_preference
+                )
+
+            task_skill_ids = tuple(skill.id for skill in task.skills)
+            task_skill_values_by_person_id = {
+                person.id: _compat_member_task_values(
+                    person,
+                    task.skills,
+                    task_skill_ids=task_skill_ids,
+                )
+                for person in request.people
+            }
+            compat_swap_bound_data_by_task_id[task_id] = (
+                task_preferences,
+                task_preference_default,
+                task_preference_logs_by_person_id,
+                task_skill_values_by_person_id,
+            )
+
     improved = True
     rounds = 0
     while improved and rounds < swap_rounds:
@@ -1765,6 +1825,93 @@ def improve_allocations(
                         left_member if member.id == right_member.id else member
                         for member in right.people
                     )
+
+                    if (
+                        compat_bound_resolved_weights is not None
+                        and compat_swap_bound_data_by_task_id
+                    ):
+                        (
+                            left_task_preferences,
+                            left_task_preference_default,
+                            left_task_preference_logs_by_person_id,
+                            left_task_skill_values_by_person_id,
+                        ) = compat_swap_bound_data_by_task_id[left.task_id]
+                        (
+                            right_task_preferences,
+                            right_task_preference_default,
+                            right_task_preference_logs_by_person_id,
+                            right_task_skill_values_by_person_id,
+                        ) = compat_swap_bound_data_by_task_id[right.task_id]
+
+                        left_upper_bound = _compat_candidate_quality_upper_bound(
+                            people=swapped_left,
+                            task_preferences=left_task_preferences,
+                            task_preference_default=left_task_preference_default,
+                            task_preference_logs_by_person_id=(
+                                left_task_preference_logs_by_person_id
+                            ),
+                            task_skill_values_by_person_id=(
+                                left_task_skill_values_by_person_id
+                            ),
+                            team_signature=tuple(
+                                member.id for member in swapped_left
+                            ),
+                            resolved_weights=compat_bound_resolved_weights,
+                            personality_cache=compat_bound_personality_cache,
+                            social_cache=compat_bound_social_cache,
+                            social_preference_presence_cache=(
+                                compat_bound_social_presence_cache
+                            ),
+                        )
+                        right_upper_bound = _compat_candidate_quality_upper_bound(
+                            people=swapped_right,
+                            task_preferences=right_task_preferences,
+                            task_preference_default=right_task_preference_default,
+                            task_preference_logs_by_person_id=(
+                                right_task_preference_logs_by_person_id
+                            ),
+                            task_skill_values_by_person_id=(
+                                right_task_skill_values_by_person_id
+                            ),
+                            team_signature=tuple(
+                                member.id for member in swapped_right
+                            ),
+                            resolved_weights=compat_bound_resolved_weights,
+                            personality_cache=compat_bound_personality_cache,
+                            social_cache=compat_bound_social_cache,
+                            social_preference_presence_cache=(
+                                compat_bound_social_presence_cache
+                            ),
+                        )
+                        upper_trial_product = (
+                            current_product
+                            / clamped_qualities[left_index]
+                            / clamped_qualities[right_index]
+                            * max(left_upper_bound, 1e-12)
+                            * max(right_upper_bound, 1e-12)
+                        )
+                        upper_trial_sum = (
+                            current_sum
+                            - old_left_quality
+                            - old_right_quality
+                            + left_upper_bound
+                            + right_upper_bound
+                        )
+                        upper_trial_min = min(
+                            other_min,
+                            left_upper_bound,
+                            right_upper_bound,
+                        )
+                        if not _objective_better(
+                            (
+                                upper_trial_product,
+                                upper_trial_min,
+                                upper_trial_sum,
+                            ),
+                            current_objective,
+                        ):
+                            continue
+
                     rescored_left = cached_score_team(
                         request,
                         task_id=left.task_id,
