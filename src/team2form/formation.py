@@ -690,7 +690,7 @@ def _best_scored_shortlist_candidate_with_compat_pruning(
     task_preferences = _request_task_preferences_by_task_id(request)[task.id]
     task_preference_default = 0.0 if not task_preferences else 0.5
     task_preference_logs_by_person_id: dict[str, float | None] = {}
-    for person in request.people:
+    for person in people:
         task_preference = task_preferences.get(person.id, task_preference_default)
         if task_preference <= 0:
             task_preference_logs_by_person_id[person.id] = None
@@ -704,7 +704,7 @@ def _best_scored_shortlist_candidate_with_compat_pruning(
             task.skills,
             task_skill_ids=task_skill_ids,
         )
-        for person in request.people
+        for person in people
     }
     (
         personality_cache,
@@ -1268,7 +1268,7 @@ def greedy_allocations(
             task_preferences = _request_task_preferences_by_task_id(request)[task_id]
             task_preference_default = 0.0 if not task_preferences else 0.5
             task_preference_logs_by_person_id = {}
-            for person in request.people:
+            for person in remaining_people:
                 task_preference = task_preferences.get(
                     person.id,
                     task_preference_default,
@@ -1287,7 +1287,7 @@ def greedy_allocations(
                     task.skills,
                     task_skill_ids=task_skill_ids,
                 )
-                for person in request.people
+                for person in remaining_people
             }
             (
                 personality_cache,
