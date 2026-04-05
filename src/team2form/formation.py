@@ -1270,20 +1270,95 @@ def greedy_allocations(
                 randomizer.shuffle(candidates)
 
             if use_upper_bound_pruning and resolved_weights is not None:
+                assert task_preference_logs_by_person_id is not None
+                task_preference_logs = task_preference_logs_by_person_id
+
                 best_quality = float('-inf')
                 best_ids: tuple[str, ...] | None = None
-                for candidate in candidates:
+
+                cheap_bounded_candidates: list[
+                    tuple[float, int, tuple[Person, ...], tuple[str, ...]]
+                ] = []
+                for index, candidate in enumerate(candidates):
+                    team_signature = tuple(member.id for member in candidate)
+                    personality_cache_key = (Mode.COMPAT, team_signature)
+                    personality_score = personality_cache.get(personality_cache_key)
+                    if personality_score is None:
+                        personality_score = team_personality_score(
+                            candidate,
+                            mode=Mode.COMPAT,
+                        )
+                        personality_cache[personality_cache_key] = (
+                            personality_score
+                        )
+
+                    task_preference_log_sum = 0.0
+                    for member in candidate:
+                        task_preference_log = task_preference_logs[member.id]
+                        if task_preference_log is None:
+                            task_preference_score = 0.0
+                            break
+                        task_preference_log_sum += task_preference_log
+                    else:
+                        task_preference_score = math.exp(
+                            task_preference_log_sum / len(candidate)
+                        )
+
+                    task_skill_rows = [
+                        task_skill_values_by_person_id[member.id]
+                        for member in candidate
+                    ]
+                    task_skill_bests = [0.0] * len(task_skill_rows[0])
+                    for task_skill_values in task_skill_rows:
+                        for task_index, value in enumerate(task_skill_values):
+                            if value > task_skill_bests[task_index]:
+                                task_skill_bests[task_index] = value
+                    skill_score_upper = geometric_mean(task_skill_bests)
+
+                    cheap_upper_bound = (
+                        resolved_weights.alpha * skill_score_upper
+                        + resolved_weights.beta * personality_score
+                        + resolved_weights.gamma * task_preference_score
+                        + resolved_weights.delta * 1.0
+                    )
+                    cheap_bounded_candidates.append(
+                        (
+                            cheap_upper_bound,
+                            index,
+                            candidate,
+                            team_signature,
+                        )
+                    )
+
+                cheap_bounded_candidates.sort(
+                    key=lambda entry: (
+                        entry[0],
+                        -entry[1],
+                    ),
+                    reverse=True,
+                )
+
+                for cheap_upper_bound, _index, candidate, team_signature in (
+                    cheap_bounded_candidates
+                ):
+                    if (
+                        best is not None
+                        and _objective_component_less(
+                            cheap_upper_bound,
+                            best_quality,
+                        )
+                    ):
+                        break
+
                     upper_bound = _compat_candidate_quality_upper_bound(
                         people=candidate,
                         task_preferences=task_preferences,
                         task_preference_default=task_preference_default,
-                        task_preference_logs_by_person_id=(
-                            task_preference_logs_by_person_id
-                        ),
+                        task_preference_logs_by_person_id=task_preference_logs,
                         task_skill_values_by_person_id=(
                             task_skill_values_by_person_id
                         ),
-                        team_signature=tuple(member.id for member in candidate),
+                        team_signature=team_signature,
                         resolved_weights=resolved_weights,
                         personality_cache=personality_cache,
                         social_cache=social_cache,
