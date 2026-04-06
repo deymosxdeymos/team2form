@@ -1184,21 +1184,21 @@ def _objective_component_close(left: float, right: float) -> bool:
 
 
 def _objective_component_less(left: float, right: float) -> bool:
-    return left < right and not math.isclose(
-        left,
-        right,
-        rel_tol=OBJECTIVE_REL_TOL,
-        abs_tol=OBJECTIVE_ABS_TOL,
-    )
+    if left >= right:
+        return False
+    tolerance = OBJECTIVE_REL_TOL * right
+    if tolerance < OBJECTIVE_ABS_TOL:
+        tolerance = OBJECTIVE_ABS_TOL
+    return (right - left) > tolerance
 
 
 def _objective_component_greater(left: float, right: float) -> bool:
-    return left > right and not math.isclose(
-        left,
-        right,
-        rel_tol=OBJECTIVE_REL_TOL,
-        abs_tol=OBJECTIVE_ABS_TOL,
-    )
+    if left <= right:
+        return False
+    tolerance = OBJECTIVE_REL_TOL * left
+    if tolerance < OBJECTIVE_ABS_TOL:
+        tolerance = OBJECTIVE_ABS_TOL
+    return (left - right) > tolerance
 
 
 def _objective_better(
