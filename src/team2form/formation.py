@@ -2497,6 +2497,7 @@ def improve_allocations(
             )
             left_swap_templates = [
                 (
+                    member_index,
                     left_people[member_index],
                     left_people[:member_index],
                     left_people[member_index + 1 :],
@@ -2505,31 +2506,100 @@ def improve_allocations(
             ]
             right_swap_templates = [
                 (
+                    member_index,
                     right_people[member_index],
                     right_people[:member_index],
                     right_people[member_index + 1 :],
                 )
                 for member_index in range(len(right_people))
             ]
-            for left_member, left_prefix, left_suffix in left_swap_templates:
-                for right_member, right_prefix, right_suffix in right_swap_templates:
-                    swapped_left = left_prefix + (right_member,) + left_suffix
-                    swapped_right = right_prefix + (left_member,) + right_suffix
+            if signatures_are_fixed_len_four:
+                left_id0 = left_people[0].id
+                left_id1 = left_people[1].id
+                left_id2 = left_people[2].id
+                left_id3 = left_people[3].id
+                right_id0 = right_people[0].id
+                right_id1 = right_people[1].id
+                right_id2 = right_people[2].id
+                right_id3 = right_people[3].id
+            for (
+                left_member_index,
+                left_member,
+                left_prefix,
+                left_suffix,
+            ) in left_swap_templates:
+                for (
+                    right_member_index,
+                    right_member,
+                    right_prefix,
+                    right_suffix,
+                ) in right_swap_templates:
+                    swapped_left: tuple[Person, ...] | None = None
+                    swapped_right: tuple[Person, ...] | None = None
 
                     if signatures_are_fixed_len_four:
-                        swapped_left_signature = (
-                            swapped_left[0].id,
-                            swapped_left[1].id,
-                            swapped_left[2].id,
-                            swapped_left[3].id,
-                        )
-                        swapped_right_signature = (
-                            swapped_right[0].id,
-                            swapped_right[1].id,
-                            swapped_right[2].id,
-                            swapped_right[3].id,
-                        )
+                        right_member_id = right_member.id
+                        if left_member_index == 0:
+                            swapped_left_signature = (
+                                right_member_id,
+                                left_id1,
+                                left_id2,
+                                left_id3,
+                            )
+                        elif left_member_index == 1:
+                            swapped_left_signature = (
+                                left_id0,
+                                right_member_id,
+                                left_id2,
+                                left_id3,
+                            )
+                        elif left_member_index == 2:
+                            swapped_left_signature = (
+                                left_id0,
+                                left_id1,
+                                right_member_id,
+                                left_id3,
+                            )
+                        else:
+                            swapped_left_signature = (
+                                left_id0,
+                                left_id1,
+                                left_id2,
+                                right_member_id,
+                            )
+
+                        left_member_id = left_member.id
+                        if right_member_index == 0:
+                            swapped_right_signature = (
+                                left_member_id,
+                                right_id1,
+                                right_id2,
+                                right_id3,
+                            )
+                        elif right_member_index == 1:
+                            swapped_right_signature = (
+                                right_id0,
+                                left_member_id,
+                                right_id2,
+                                right_id3,
+                            )
+                        elif right_member_index == 2:
+                            swapped_right_signature = (
+                                right_id0,
+                                right_id1,
+                                left_member_id,
+                                right_id3,
+                            )
+                        else:
+                            swapped_right_signature = (
+                                right_id0,
+                                right_id1,
+                                right_id2,
+                                left_member_id,
+                            )
                     else:
+                        swapped_left = left_prefix + (right_member,) + left_suffix
+                        swapped_right = right_prefix + (left_member,) + right_suffix
                         swapped_left_signature = tuple(
                             member.id for member in swapped_left
                         )
@@ -2558,6 +2628,12 @@ def improve_allocations(
                             swapped_left_signature
                         )
                         if left_upper_bound is None:
+                            if swapped_left is None:
+                                swapped_left = (
+                                    left_prefix
+                                    + (right_member,)
+                                    + left_suffix
+                                )
                             left_upper_bound = _compat_candidate_quality_upper_bound(
                                 people=swapped_left,
                                 task_preferences=left_task_preferences,
@@ -2589,6 +2665,12 @@ def improve_allocations(
                             swapped_right_signature
                         )
                         if right_upper_bound is None:
+                            if swapped_right is None:
+                                swapped_right = (
+                                    right_prefix
+                                    + (left_member,)
+                                    + right_suffix
+                                )
                             right_upper_bound = (
                                 _compat_candidate_quality_upper_bound(
                                     people=swapped_right,
@@ -2656,6 +2738,13 @@ def improve_allocations(
                                     current_sum,
                                 ):
                                     continue
+
+                    if swapped_left is None:
+                        swapped_left = left_prefix + (right_member,) + left_suffix
+                    if swapped_right is None:
+                        swapped_right = (
+                            right_prefix + (left_member,) + right_suffix
+                        )
 
                     rescored_left = cached_score_team(
                         request,

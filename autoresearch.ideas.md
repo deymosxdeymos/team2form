@@ -1,10 +1,10 @@
 - Extend the new admissible greedy upper-bound pruning to additional safe paths (e.g. `build_scored_candidates` / exact-prep when `total_combinations <= max_candidate_teams`) while preserving current tie semantics.
 - Generalize the kept COMPAT scored-shortlist cap+1 fast path (`_best_scored_shortlist_candidate_with_compat_pruning`) to larger overshoot cases only if top-k/tie semantics can be proven equivalent.
 - Explore a broader `candidate_combinations()` ranked-selection redesign (algorithmic, not micro-tweaks), since many heap/list/comprehension/key-canonicalization micro-optimizations have consistently regressed.
-- Follow up on the latest kept chain (through `524dcfd`) by targeting remaining structural swap/cache/output overhead, not branch-only micro-tweaks.
+- Follow up on the latest kept chain (through `47de6e8`) by targeting remaining structural swap/cache/output overhead, not branch-only micro-tweaks.
 - Investigate behavior-preserving reductions in `_compat_member_task_analysis` / `_compat_member_priority_order` that remove whole classes of work (not extra caching/branching), while keeping exact tie-breaking semantics.
 - Continue request-scoped immutable-data caching on the hottest score path only (task lookup/task preferences/team social-preference presence/resolved weights proved high leverage); avoid extending caches into colder paths unless profiling justifies it.
-- Re-validate commit `524dcfd` (latest keep chain through explicit-loop output payload assembly, compat upper-bound gate hoist, and sentinel-based exact-bound break simplification on top of prior keeps) when host latency returns to a stable band to confirm gains are not regime-specific and not benchmark-regime artifacts.
+- Re-validate commit `47de6e8` (latest keep chain through explicit-loop output payload assembly, compat upper-bound gate hoist, sentinel-based exact-bound break simplification, and consolidated fixed-len swap-signature branching) when host latency returns to a stable band to confirm gains are not regime-specific and not benchmark-regime artifacts.
 - Use immediate paired A/B validation (candidate run followed by no-code baseline, or vice versa) for marginal deltas while host variance remains high.
 - Host regime has shifted across wide bands (~1.5ms down to ~0.75ms during this session, with recent baseline sampling around ~0.74–0.81ms); treat micro deltas cautiously and keep strict paired/no-code confirmations.
 
@@ -149,4 +149,5 @@ Pruned as stale/tried (do not retry without a materially different approach):
 - Request-scoped cache for per-allocation final people payload lists in output construction — regressed.
 - Tuple-based final payload containers (teams/people tuples) for `TeamsResponse.model_validate` — regressed.
 - `cached_score_team` dual-key raw-order fast path (probe/store raw `(task_id, raw_signature)` aliases before canonical key) — regressed.
+- `cached_score_team` cache-hit lookup rewrite from `.get(...)` to `try/except KeyError` — regressed.
 - Swap upper-bound cache lookup rewrite from `.get(...)` to `try/except KeyError` in `improve_allocations` — regressed.
