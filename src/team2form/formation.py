@@ -141,6 +141,22 @@ _REQUEST_COMPAT_SWAP_UPPER_BOUND_CACHES: dict[
     ],
 ] = {}
 
+_REQUEST_COMPAT_SWAP_BOUND_DATA_BY_TASK_ID: dict[
+    int,
+    tuple[
+        FormationRequest,
+        dict[
+            str,
+            tuple[
+                dict[str, float],
+                float,
+                dict[str, float | None],
+                dict[str, tuple[float, ...]],
+            ],
+        ],
+    ],
+] = {}
+
 _REQUEST_COMPAT_SHORTLISTS: dict[
     tuple[
         int,
@@ -2273,38 +2289,74 @@ def improve_allocations(
 
         tasks_by_id = _request_tasks_by_id(request)
         task_preferences_by_task_id = _request_task_preferences_by_task_id(request)
-        for task_id in {allocation.task_id for allocation in allocations}:
-            task = tasks_by_id[task_id]
-            task_preferences = task_preferences_by_task_id[task_id]
-            task_preference_default = 0.0 if not task_preferences else 0.5
-            task_preference_logs_by_person_id: dict[str, float | None] = {}
-            for person in request.people:
-                task_preference = task_preferences.get(
-                    person.id,
-                    task_preference_default,
-                )
-                if task_preference <= 0:
-                    task_preference_logs_by_person_id[person.id] = None
-                    continue
-                task_preference_logs_by_person_id[person.id] = math.log(
-                    task_preference
-                )
 
-            task_skill_ids = tuple(skill.id for skill in task.skills)
-            task_skill_values_by_person_id = {
-                person.id: _compat_member_task_values(
-                    person,
-                    task.skills,
-                    task_skill_ids=task_skill_ids,
-                )
-                for person in request.people
-            }
-            compat_swap_bound_data_by_task_id[task_id] = (
-                task_preferences,
-                task_preference_default,
-                task_preference_logs_by_person_id,
-                task_skill_values_by_person_id,
+        request_bound_data_cache_key = id(request)
+        cached_request_bound_data_by_task_id = (
+            _REQUEST_COMPAT_SWAP_BOUND_DATA_BY_TASK_ID.get(
+                request_bound_data_cache_key
             )
+        )
+        if (
+            cached_request_bound_data_by_task_id is not None
+            and cached_request_bound_data_by_task_id[0] is request
+        ):
+            request_bound_data_by_task_id = (
+                cached_request_bound_data_by_task_id[1]
+            )
+        else:
+            request_bound_data_by_task_id: dict[
+                str,
+                tuple[
+                    dict[str, float],
+                    float,
+                    dict[str, float | None],
+                    dict[str, tuple[float, ...]],
+                ],
+            ] = {}
+            _REQUEST_COMPAT_SWAP_BOUND_DATA_BY_TASK_ID[
+                request_bound_data_cache_key
+            ] = (
+                request,
+                request_bound_data_by_task_id,
+            )
+
+        for task_id in {allocation.task_id for allocation in allocations}:
+            task_bound_data = request_bound_data_by_task_id.get(task_id)
+            if task_bound_data is None:
+                task = tasks_by_id[task_id]
+                task_preferences = task_preferences_by_task_id[task_id]
+                task_preference_default = 0.0 if not task_preferences else 0.5
+                task_preference_logs_by_person_id: dict[str, float | None] = {}
+                for person in request.people:
+                    task_preference = task_preferences.get(
+                        person.id,
+                        task_preference_default,
+                    )
+                    if task_preference <= 0:
+                        task_preference_logs_by_person_id[person.id] = None
+                        continue
+                    task_preference_logs_by_person_id[person.id] = math.log(
+                        task_preference
+                    )
+
+                task_skill_ids = tuple(skill.id for skill in task.skills)
+                task_skill_values_by_person_id = {
+                    person.id: _compat_member_task_values(
+                        person,
+                        task.skills,
+                        task_skill_ids=task_skill_ids,
+                    )
+                    for person in request.people
+                }
+                task_bound_data = (
+                    task_preferences,
+                    task_preference_default,
+                    task_preference_logs_by_person_id,
+                    task_skill_values_by_person_id,
+                )
+                request_bound_data_by_task_id[task_id] = task_bound_data
+
+            compat_swap_bound_data_by_task_id[task_id] = task_bound_data
             compat_swap_upper_bound_cache_by_task_id.setdefault(task_id, {})
 
     improved = True

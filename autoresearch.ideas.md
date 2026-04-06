@@ -3,7 +3,7 @@
 - Explore a broader `candidate_combinations()` ranked-selection redesign (algorithmic, not micro-tweaks), since many heap/list/comprehension/key-canonicalization micro-optimizations have consistently regressed.
 - Investigate behavior-preserving reductions in `_compat_member_task_analysis` / `_compat_member_priority_order` that remove whole classes of work (not extra caching/branching), while keeping exact tie-breaking semantics.
 - Continue request-scoped immutable-data caching on the hottest score path only (task lookup/task preferences/team social-preference presence/resolved weights proved high leverage); avoid extending caches into colder paths unless profiling justifies it.
-- Re-validate commit `c7576b5` (all prior keeps through `0e7e815`, plus request-scoped shortlist-potential caching (`c1ac8ab`), cap+1 cheap-bounded candidate caching (`f3404c3`), greedy <=cap cheap-bounded candidate caching (`4c0b6ce`), swap upper-bound cache persistence (`0e7e815`), and cap+1 shortlist-selection caching (`c7576b5`)) when host latency returns to a stable band to confirm gains are not regime-specific.
+- Re-validate commit `7320de4` (all prior keeps through `c7576b5`, plus persistent request-scoped `score_cache` reuse in `form_teams` for original scoring path) when host latency returns to a stable band to confirm gains are not regime-specific and not benchmark-regime artifacts.
 - Use immediate paired A/B validation (candidate run followed by no-code baseline, or vice versa) for marginal deltas while host variance remains high.
 
 Pruned as stale/tried (do not retry without a materially different approach):
