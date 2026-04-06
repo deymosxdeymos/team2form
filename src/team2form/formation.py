@@ -1195,28 +1195,39 @@ def _objective_better(
     left: tuple[float, float, float],
     right: tuple[float, float, float],
 ) -> bool:
-    for left_value, right_value in zip(left, right, strict=True):
-        if _objective_component_greater(left_value, right_value):
-            return True
-        if _objective_component_less(left_value, right_value):
-            return False
-    return False
+    left_product, left_minimum, left_sum = left
+    right_product, right_minimum, right_sum = right
+
+    if _objective_component_greater(left_product, right_product):
+        return True
+    if _objective_component_less(left_product, right_product):
+        return False
+
+    if _objective_component_greater(left_minimum, right_minimum):
+        return True
+    if _objective_component_less(left_minimum, right_minimum):
+        return False
+
+    return _objective_component_greater(left_sum, right_sum)
 
 
 def _objective_dominates(
     left: tuple[float, float, float],
     right: tuple[float, float, float],
 ) -> bool:
-    comparisons = zip(left[1:], right[1:], strict=True)
-    if not all(
-        left_value > right_value
-        or _objective_component_close(left_value, right_value)
-        for left_value, right_value in comparisons
-    ):
+    left_minimum = left[1]
+    left_sum = left[2]
+    right_minimum = right[1]
+    right_sum = right[2]
+
+    if _objective_component_less(left_minimum, right_minimum):
         return False
-    return any(
-        _objective_component_greater(left_value, right_value)
-        for left_value, right_value in zip(left[1:], right[1:], strict=True)
+    if _objective_component_less(left_sum, right_sum):
+        return False
+
+    return (
+        _objective_component_greater(left_minimum, right_minimum)
+        or _objective_component_greater(left_sum, right_sum)
     )
 
 
