@@ -2739,31 +2739,87 @@ def improve_allocations(
                                 ):
                                     continue
 
-                    if swapped_left is None:
-                        swapped_left = left_prefix + (right_member,) + left_suffix
-                    if swapped_right is None:
-                        swapped_right = (
-                            right_prefix + (left_member,) + right_suffix
+                    rescored_left: ScoredAllocation | None = None
+                    rescored_right: ScoredAllocation | None = None
+                    if signatures_are_fixed_len_four:
+                        left_sig0, left_sig1, left_sig2, left_sig3 = (
+                            swapped_left_signature
+                        )
+                        if left_sig1 < left_sig0:
+                            left_sig0, left_sig1 = left_sig1, left_sig0
+                        if left_sig3 < left_sig2:
+                            left_sig2, left_sig3 = left_sig3, left_sig2
+                        if left_sig2 < left_sig0:
+                            left_sig0, left_sig2 = left_sig2, left_sig0
+                        if left_sig3 < left_sig1:
+                            left_sig1, left_sig3 = left_sig3, left_sig1
+                        if left_sig2 < left_sig1:
+                            left_sig1, left_sig2 = left_sig2, left_sig1
+                        rescored_left = score_cache.get(
+                            (
+                                left.task_id,
+                                (
+                                    left_sig0,
+                                    left_sig1,
+                                    left_sig2,
+                                    left_sig3,
+                                ),
+                            )
                         )
 
-                    rescored_left = cached_score_team(
-                        request,
-                        task_id=left.task_id,
-                        people=swapped_left,
-                        mode=mode,
-                        preset=preset,
-                        normalize_weights=normalize_weights,
-                        score_cache=score_cache,
-                    )
-                    rescored_right = cached_score_team(
-                        request,
-                        task_id=right.task_id,
-                        people=swapped_right,
-                        mode=mode,
-                        preset=preset,
-                        normalize_weights=normalize_weights,
-                        score_cache=score_cache,
-                    )
+                        right_sig0, right_sig1, right_sig2, right_sig3 = (
+                            swapped_right_signature
+                        )
+                        if right_sig1 < right_sig0:
+                            right_sig0, right_sig1 = right_sig1, right_sig0
+                        if right_sig3 < right_sig2:
+                            right_sig2, right_sig3 = right_sig3, right_sig2
+                        if right_sig2 < right_sig0:
+                            right_sig0, right_sig2 = right_sig2, right_sig0
+                        if right_sig3 < right_sig1:
+                            right_sig1, right_sig3 = right_sig3, right_sig1
+                        if right_sig2 < right_sig1:
+                            right_sig1, right_sig2 = right_sig2, right_sig1
+                        rescored_right = score_cache.get(
+                            (
+                                right.task_id,
+                                (
+                                    right_sig0,
+                                    right_sig1,
+                                    right_sig2,
+                                    right_sig3,
+                                ),
+                            )
+                        )
+
+                    if rescored_left is None:
+                        if swapped_left is None:
+                            swapped_left = (
+                                left_prefix + (right_member,) + left_suffix
+                            )
+                        rescored_left = cached_score_team(
+                            request,
+                            task_id=left.task_id,
+                            people=swapped_left,
+                            mode=mode,
+                            preset=preset,
+                            normalize_weights=normalize_weights,
+                            score_cache=score_cache,
+                        )
+                    if rescored_right is None:
+                        if swapped_right is None:
+                            swapped_right = (
+                                right_prefix + (left_member,) + right_suffix
+                            )
+                        rescored_right = cached_score_team(
+                            request,
+                            task_id=right.task_id,
+                            people=swapped_right,
+                            mode=mode,
+                            preset=preset,
+                            normalize_weights=normalize_weights,
+                            score_cache=score_cache,
+                        )
 
                     trial_product = (
                         pair_product_factor
