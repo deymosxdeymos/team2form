@@ -2485,16 +2485,28 @@ def improve_allocations(
                 ),
                 default=float('inf'),
             )
-            for left_member in left.people:
-                for right_member in right.people:
-                    swapped_left = tuple(
-                        right_member if member.id == left_member.id else member
-                        for member in left.people
-                    )
-                    swapped_right = tuple(
-                        left_member if member.id == right_member.id else member
-                        for member in right.people
-                    )
+            left_people = left.people
+            right_people = right.people
+            left_swap_templates = [
+                (
+                    left_people[member_index],
+                    left_people[:member_index],
+                    left_people[member_index + 1 :],
+                )
+                for member_index in range(len(left_people))
+            ]
+            right_swap_templates = [
+                (
+                    right_people[member_index],
+                    right_people[:member_index],
+                    right_people[member_index + 1 :],
+                )
+                for member_index in range(len(right_people))
+            ]
+            for left_member, left_prefix, left_suffix in left_swap_templates:
+                for right_member, right_prefix, right_suffix in right_swap_templates:
+                    swapped_left = left_prefix + (right_member,) + left_suffix
+                    swapped_right = right_prefix + (left_member,) + right_suffix
 
                     if len(swapped_left) == 4:
                         swapped_left_signature = (
