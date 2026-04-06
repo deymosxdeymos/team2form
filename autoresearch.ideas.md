@@ -3,7 +3,7 @@
 - Explore a broader `candidate_combinations()` ranked-selection redesign (algorithmic, not micro-tweaks), since many heap/list/comprehension/key-canonicalization micro-optimizations have consistently regressed.
 - Investigate behavior-preserving reductions in `_compat_member_task_analysis` / `_compat_member_priority_order` that remove whole classes of work (not extra caching/branching), while keeping exact tie-breaking semantics.
 - Continue request-scoped immutable-data caching on the hottest score path only (task lookup/task preferences/team social-preference presence/resolved weights proved high leverage); avoid extending caches into colder paths unless profiling justifies it.
-- Re-validate commit `78ce3d9` (all prior keeps through `d94ba9f`, plus non-social bound reuse in cap+1 and <=cap COMPAT pruning exact stage from `23b25ec`, plus per-task swap-phase upper-bound memoization from `78ce3d9`) when host latency returns to a stable band to confirm gains are not regime-specific.
+- Re-validate commit `fc8b7b4` (all prior keeps through `78ce3d9`, plus COMPAT `len(team)==4` personality fast path from `3662dfa` and its sum/sum-of-squares variance refinement from `fc8b7b4`) when host latency returns to a stable band to confirm gains are not regime-specific.
 - Use immediate paired A/B validation (candidate run followed by no-code baseline, or vice versa) for marginal deltas while host variance remains high.
 
 Pruned as stale/tried (do not retry without a materially different approach):
@@ -108,3 +108,10 @@ Pruned as stale/tried (do not retry without a materially different approach):
 - `_compat_candidate_quality_upper_bound`-only 4-member task-preference-log unroll (improve-phase bound misses) — regressed.
 - Single-capacity (`max_skills_per_member == 1`) COMPAT assignment rewrite using pre-ranked per-member task lists in `_assign_task_skills_compat` — checks failed (changed overlap/tie assignment semantics).
 - Swap-loop left-bound + global compat-quality-cap pre-check (skip right bound when impossible) — regressed.
+- Square-team perfect-matching gate inside `_compat_candidate_quality_upper_bound` (force `skill_score_upper=0` when no positive perfect matching) — regressed.
+- COMPAT `team_social_score` `len(team)==4` fast path with direct fixed-member mapping lookups — regressed.
+- `_compat_gender_bonus` `len(team)==4` constant-mapped minority-fraction fast path — regressed.
+- Inline COMPAT `len(team)==4` gender-bonus math directly in `team_personality_score` fast path (replace `_compat_gender_bonus(team)` call) — regressed (retested in fast regime).
+- Generic (`len(team)>2`) `team_personality_score` introvert clamp rewrite (`max(...)` -> branch-derived scalar reuse) — regressed.
+- Per-loop 4-value skill-upper memoization in COMPAT cheap pruning loops (`(best0,best1,best2,best3) -> geometric_mean`) — regressed.
+- `_compat_candidate_social_upper_bound` cache-hit ordering swap (`social_cache` check before presence-cache check) — neutral/regressed.

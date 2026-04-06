@@ -71,6 +71,22 @@ _REQUEST_RESOLVED_WEIGHTS: dict[
     tuple[FormationRequest, object],
 ] = {}
 
+_REQUEST_SHORTLIST_POTENTIALS: dict[
+    tuple[
+        int,
+        tuple[str, ...],
+        int,
+        Mode,
+        bool,
+        bool,
+    ],
+    tuple[
+        FormationRequest,
+        dict[str, float],
+        dict[str, float],
+    ],
+] = {}
+
 
 def _request_tasks_by_id(request: FormationRequest) -> dict[str, Task]:
     cache_key = id(request)
@@ -349,118 +365,157 @@ def shortlist_scorers(
     social_potentials: dict[str, float] = {}
     personality_potentials: dict[str, float] = {}
 
-    if team_size > 1 and len(people) > 1:
-        partner_count = min(team_size - 1, len(people) - 1)
-
-        personality_pair_scores_by_person_id: dict[str, list[float]] | None = None
-        if weights.beta > 0:
-            personality_pair_scores_by_person_id = {
-                person.id: [] for person in people
-            }
-
-        social_pair_scores_by_person_id: dict[str, list[float]] | None = None
-        explicit_preference_ids_by_person_id: dict[str, set[str]] | None = None
-        if weights.delta > 0:
-            social_pair_scores_by_person_id = {person.id: [] for person in people}
-            explicit_preference_ids_by_person_id = {
-                person.id: {
-                    preference.person_id
-                    for preference in (person.preferences or [])
-                    if preference.person_id != person.id
-                }
-                for person in people
-            }
-
+    personality_required = weights.beta > 0
+    social_required = weights.delta > 0
+    if (
+        team_size > 1
+        and len(people) > 1
+        and (personality_required or social_required)
+    ):
+        shortlist_cache_key = (
+            id(request),
+            tuple(person.id for person in people),
+            team_size,
+            mode,
+            personality_required,
+            social_required,
+        )
+        cached_shortlist_potentials = _REQUEST_SHORTLIST_POTENTIALS.get(
+            shortlist_cache_key
+        )
         if (
-            personality_pair_scores_by_person_id is not None
-            or social_pair_scores_by_person_id is not None
+            cached_shortlist_potentials is not None
+            and cached_shortlist_potentials[0] is request
         ):
-            for left_index, left_member in enumerate(people):
-                for right_member in people[left_index + 1 :]:
-                    if personality_pair_scores_by_person_id is not None:
-                        personality_pair_score = team_personality_score(
-                            (left_member, right_member),
-                            mode=mode,
-                        )
-                        personality_pair_scores_by_person_id[left_member.id].append(
-                            personality_pair_score
-                        )
-                        personality_pair_scores_by_person_id[right_member.id].append(
-                            personality_pair_score
-                        )
+            personality_potentials = cached_shortlist_potentials[1]
+            social_potentials = cached_shortlist_potentials[2]
+        else:
+            partner_count = min(team_size - 1, len(people) - 1)
 
-                    if social_pair_scores_by_person_id is not None:
-                        assert explicit_preference_ids_by_person_id is not None
-                        social_pair_score = 0.0
-                        if (
-                            mode != Mode.COMPAT
-                            or right_member.id
-                            in explicit_preference_ids_by_person_id[left_member.id]
-                            or left_member.id
-                            in explicit_preference_ids_by_person_id[
-                                right_member.id
-                            ]
-                        ):
-                            social_pair_score = team_social_score(
+            personality_pair_scores_by_person_id: dict[str, list[float]] | None = (
+                None
+            )
+            if personality_required:
+                personality_pair_scores_by_person_id = {
+                    person.id: [] for person in people
+                }
+
+            social_pair_scores_by_person_id: dict[str, list[float]] | None = None
+            explicit_preference_ids_by_person_id: dict[str, set[str]] | None = None
+            if social_required:
+                social_pair_scores_by_person_id = {
+                    person.id: [] for person in people
+                }
+                explicit_preference_ids_by_person_id = {
+                    person.id: {
+                        preference.person_id
+                        for preference in (person.preferences or [])
+                        if preference.person_id != person.id
+                    }
+                    for person in people
+                }
+
+            if (
+                personality_pair_scores_by_person_id is not None
+                or social_pair_scores_by_person_id is not None
+            ):
+                for left_index, left_member in enumerate(people):
+                    for right_member in people[left_index + 1 :]:
+                        if personality_pair_scores_by_person_id is not None:
+                            personality_pair_score = team_personality_score(
                                 (left_member, right_member),
-                                compat_default=0.5,
+                                mode=mode,
                             )
-                        social_pair_scores_by_person_id[left_member.id].append(
-                            social_pair_score
-                        )
-                        social_pair_scores_by_person_id[right_member.id].append(
-                            social_pair_score
-                        )
+                            personality_pair_scores_by_person_id[
+                                left_member.id
+                            ].append(personality_pair_score)
+                            personality_pair_scores_by_person_id[
+                                right_member.id
+                            ].append(personality_pair_score)
 
-            def top_partner_average(pair_scores: list[float]) -> float:
-                if partner_count == 1:
-                    return max(pair_scores)
+                        if social_pair_scores_by_person_id is not None:
+                            assert explicit_preference_ids_by_person_id is not None
+                            social_pair_score = 0.0
+                            if (
+                                mode != Mode.COMPAT
+                                or right_member.id
+                                in explicit_preference_ids_by_person_id[
+                                    left_member.id
+                                ]
+                                or left_member.id
+                                in explicit_preference_ids_by_person_id[
+                                    right_member.id
+                                ]
+                            ):
+                                social_pair_score = team_social_score(
+                                    (left_member, right_member),
+                                    compat_default=0.5,
+                                )
+                            social_pair_scores_by_person_id[left_member.id].append(
+                                social_pair_score
+                            )
+                            social_pair_scores_by_person_id[right_member.id].append(
+                                social_pair_score
+                            )
 
-                if partner_count == 2:
-                    top_1 = float('-inf')
-                    top_2 = float('-inf')
-                    for score in pair_scores:
-                        if score > top_1:
-                            top_2 = top_1
-                            top_1 = score
-                        elif score > top_2:
-                            top_2 = score
-                    return (top_1 + top_2) / 2.0
+                def top_partner_average(pair_scores: list[float]) -> float:
+                    if partner_count == 1:
+                        return max(pair_scores)
 
-                if partner_count == 3:
-                    top_1 = float('-inf')
-                    top_2 = float('-inf')
-                    top_3 = float('-inf')
-                    for score in pair_scores:
-                        if score > top_1:
-                            top_3 = top_2
-                            top_2 = top_1
-                            top_1 = score
-                        elif score > top_2:
-                            top_3 = top_2
-                            top_2 = score
-                        elif score > top_3:
-                            top_3 = score
-                    return (top_1 + top_2 + top_3) / 3.0
+                    if partner_count == 2:
+                        top_1 = float('-inf')
+                        top_2 = float('-inf')
+                        for score in pair_scores:
+                            if score > top_1:
+                                top_2 = top_1
+                                top_1 = score
+                            elif score > top_2:
+                                top_2 = score
+                        return (top_1 + top_2) / 2.0
 
-                return (
-                    sum(sorted(pair_scores, reverse=True)[:partner_count])
-                    / partner_count
-                )
+                    if partner_count == 3:
+                        top_1 = float('-inf')
+                        top_2 = float('-inf')
+                        top_3 = float('-inf')
+                        for score in pair_scores:
+                            if score > top_1:
+                                top_3 = top_2
+                                top_2 = top_1
+                                top_1 = score
+                            elif score > top_2:
+                                top_3 = top_2
+                                top_2 = score
+                            elif score > top_3:
+                                top_3 = score
+                        return (top_1 + top_2 + top_3) / 3.0
 
-            if personality_pair_scores_by_person_id is not None:
-                for person_id, pair_scores in (
-                    personality_pair_scores_by_person_id.items()
-                ):
-                    personality_potentials[person_id] = top_partner_average(
-                        pair_scores
+                    return (
+                        sum(sorted(pair_scores, reverse=True)[:partner_count])
+                        / partner_count
                     )
 
-            if social_pair_scores_by_person_id is not None:
-                for person_id, pair_scores in social_pair_scores_by_person_id.items():
-                    social_potentials[person_id] = top_partner_average(
-                        pair_scores
-                    )
+                if personality_pair_scores_by_person_id is not None:
+                    for person_id, pair_scores in (
+                        personality_pair_scores_by_person_id.items()
+                    ):
+                        personality_potentials[person_id] = (
+                            top_partner_average(pair_scores)
+                        )
+
+                if social_pair_scores_by_person_id is not None:
+                    for (
+                        person_id,
+                        pair_scores,
+                    ) in social_pair_scores_by_person_id.items():
+                        social_potentials[person_id] = top_partner_average(
+                            pair_scores
+                        )
+
+            _REQUEST_SHORTLIST_POTENTIALS[shortlist_cache_key] = (
+                request,
+                personality_potentials,
+                social_potentials,
+            )
 
     def social_potential(person: Person) -> float:
         if weights.delta <= 0:
