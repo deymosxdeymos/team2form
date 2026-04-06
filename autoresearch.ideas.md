@@ -1,11 +1,11 @@
 - Extend the new admissible greedy upper-bound pruning to additional safe paths (e.g. `build_scored_candidates` / exact-prep when `total_combinations <= max_candidate_teams`) while preserving current tie semantics.
 - Generalize the kept COMPAT scored-shortlist cap+1 fast path (`_best_scored_shortlist_candidate_with_compat_pruning`) to larger overshoot cases only if top-k/tie semantics can be proven equivalent.
 - Explore a broader `candidate_combinations()` ranked-selection redesign (algorithmic, not micro-tweaks), since many heap/list/comprehension/key-canonicalization micro-optimizations have consistently regressed.
-- Follow up on the latest kept chain (through `586180e`) by targeting remaining structural swap/cache/output overhead, not branch-only micro-tweaks.
+- Follow up on the latest kept chain (through `72f7d4e`) by targeting remaining structural swap/cache/output overhead, not branch-only micro-tweaks.
 - Continue exploiting lazy work patterns in swap improvement (signature-first decisions with deferred tuple/scoring construction), but only where semantic equivalence is straightforward.
 - Investigate behavior-preserving reductions in `_compat_member_task_analysis` / `_compat_member_priority_order` that remove whole classes of work (not extra caching/branching), while keeping exact tie-breaking semantics.
 - Continue request-scoped immutable-data caching on the hottest score path only (task lookup/task preferences/team social-preference presence/resolved weights proved high leverage); avoid extending caches into colder paths unless profiling justifies it.
-- Re-validate commit `586180e` (latest keep chain through explicit-loop output payload assembly, compat upper-bound gate hoist, sentinel-based exact-bound break simplification, consolidated fixed-len swap-signature branching, and lazy swapped-team materialization after bound probes) when host latency returns to a stable band to confirm gains are not regime-specific and not benchmark-regime artifacts.
+- Re-validate commit `72f7d4e` (latest keep chain through explicit-loop output payload assembly, compat upper-bound gate hoist, sentinel-based exact-bound break simplification, consolidated fixed-len swap-signature branching, lazy swapped-team materialization after bound probes, and fixed-len swap score-cache direct-hit probes) when host latency returns to a stable band to confirm gains are not regime-specific and not benchmark-regime artifacts.
 - Use immediate paired A/B validation (candidate run followed by no-code baseline, or vice versa) for marginal deltas while host variance remains high.
 - Host regime has shifted across wide bands (~1.5ms down to ~0.75ms during this session, with recent baseline sampling around ~0.74–0.81ms); treat micro deltas cautiously and keep strict paired/no-code confirmations.
 
@@ -152,4 +152,9 @@ Pruned as stale/tried (do not retry without a materially different approach):
 - `cached_score_team` dual-key raw-order fast path (probe/store raw `(task_id, raw_signature)` aliases before canonical key) — regressed.
 - `cached_score_team` cache-hit lookup rewrite from `.get(...)` to `try/except KeyError` — regressed.
 - Swap upper-bound cache lookup rewrite from `.get(...)` to `try/except KeyError` in `improve_allocations` — regressed.
-- Current fixed-len swap-signature consolidation (`47de6e8`) plus lazy swapped-team materialization (`586180e`) is the preferred direction; avoid reverting to eager swapped tuple construction before bound probes.
+- Current fixed-len swap-signature consolidation (`47de6e8`) + lazy swapped-team materialization (`586180e`) + fixed-len direct swap score-cache probes (`72f7d4e`) is the preferred direction; avoid reverting to eager swapped tuple construction or unconditional `cached_score_team` calls before cache probes.
+- Fixed-len swap miss-path helper (`cached_score_team_for_signature` using precomputed canonical signatures to bypass `cached_score_team` canonicalization on misses) — regressed; keep the direct-hit-only fast path from `72f7d4e`.
+- Fixed-len swap score-cache canonicalization rewrite using precomputed per-index sorted remainder triples + insertion branches — regressed; keep the existing 4-id compare/swap canonicalization network.
+- Greedy <=cap COMPAT exact-stage cache payload expansion to store canonical score signatures (and bypass `cached_score_team` canonicalization via direct cache probe + `score_team`) — regressed.
+- Request-scoped final-winner cache for `_best_scored_shortlist_candidate_with_compat_pruning` (shortlist cap+1 path) — neutral/slightly regressed.
+- Partial direct-cache rewrites that mutate/reuse base team-id locals across iterations are error-prone (caused quality assertion failure during exploration); keep canonicalization variables strictly local per candidate.

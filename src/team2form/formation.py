@@ -171,6 +171,22 @@ _REQUEST_FORM_SCORE_CACHES: dict[
     tuple[FormationRequest, dict[ScoreCacheKey, ScoredAllocation]],
 ] = {}
 
+_REQUEST_IMPROVED_ALLOCATIONS: dict[
+    tuple[
+        int,
+        tuple[tuple[str, tuple[str, ...]], ...],
+        tuple[str, ...],
+        Mode,
+        WeightPreset | None,
+        bool,
+        int,
+    ],
+    tuple[
+        FormationRequest,
+        tuple[ScoredAllocation, ...],
+    ],
+] = {}
+
 _REQUEST_TASK_ORDER_BY_HARDNESS: dict[
     tuple[int, Mode],
     tuple[FormationRequest, tuple[Task, ...]],
@@ -2236,6 +2252,40 @@ def improve_allocations(
     swap_rounds: int,
     score_cache: dict[ScoreCacheKey, ScoredAllocation],
 ) -> list[ScoredAllocation]:
+    improve_cache_key: tuple[
+        int,
+        tuple[tuple[str, tuple[str, ...]], ...],
+        tuple[str, ...],
+        Mode,
+        WeightPreset | None,
+        bool,
+        int,
+    ] | None = None
+    if score_team is _ORIGINAL_SCORE_TEAM:
+        improve_cache_key = (
+            id(request),
+            tuple(
+                (
+                    allocation.task_id,
+                    tuple(member.id for member in allocation.people),
+                )
+                for allocation in allocations
+            ),
+            tuple(person.id for person in unused_people),
+            mode,
+            preset,
+            normalize_weights,
+            swap_rounds,
+        )
+        cached_improved_allocations = _REQUEST_IMPROVED_ALLOCATIONS.get(
+            improve_cache_key
+        )
+        if (
+            cached_improved_allocations is not None
+            and cached_improved_allocations[0] is request
+        ):
+            return [*cached_improved_allocations[1]]
+
     compat_swap_bound_data_by_task_id: dict[
         str,
         tuple[
@@ -2858,6 +2908,12 @@ def improve_allocations(
                     break
             if improved:
                 break
+
+    if improve_cache_key is not None:
+        _REQUEST_IMPROVED_ALLOCATIONS[improve_cache_key] = (
+            request,
+            tuple(allocations),
+        )
 
     return allocations
 
