@@ -46,6 +46,29 @@ OBJECTIVE_REL_TOL = 1e-12
 OBJECTIVE_ABS_TOL = 1e-15
 
 
+def _sorted_team_signature(people: tuple[Person, ...]) -> tuple[str, ...]:
+    if len(people) == 4:
+        first_id = people[0].id
+        second_id = people[1].id
+        third_id = people[2].id
+        fourth_id = people[3].id
+
+        if second_id < first_id:
+            first_id, second_id = second_id, first_id
+        if fourth_id < third_id:
+            third_id, fourth_id = fourth_id, third_id
+        if third_id < first_id:
+            first_id, third_id = third_id, first_id
+        if fourth_id < second_id:
+            second_id, fourth_id = fourth_id, second_id
+        if third_id < second_id:
+            second_id, third_id = third_id, second_id
+
+        return (first_id, second_id, third_id, fourth_id)
+
+    return tuple(sorted(person.id for person in people))
+
+
 def _unused_member_scorer(_person: Person) -> tuple[float, float, float, float, float]:
     return (0.0, 0.0, 0.0, 0.0, 0.0)
 
@@ -1350,7 +1373,7 @@ def cached_score_team(
     normalize_weights: bool,
     score_cache: dict[ScoreCacheKey, ScoredAllocation],
 ) -> ScoredAllocation:
-    team_signature = tuple(sorted(person.id for person in people))
+    team_signature = _sorted_team_signature(people)
     candidate_key = (task_id, team_signature)
     cached = score_cache.get(candidate_key)
     if cached is not None:
