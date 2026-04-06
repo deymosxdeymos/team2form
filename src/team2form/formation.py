@@ -31,6 +31,7 @@ class ScoredAllocation:
     people: tuple[Person, ...]
     quality: float
     assignments: dict[str, list[str]]
+    team_signature: tuple[str, ...] | None = None
 
 
 class TeamFormationError(ValueError):
@@ -1348,6 +1349,7 @@ def score_team(
         people=people,
         quality=components.quality,
         assignments=components.assignments,
+        team_signature=team_signature,
     )
 
 
@@ -2314,7 +2316,10 @@ def improve_allocations(
             tuple(
                 (
                     allocation.task_id,
-                    tuple(member.id for member in allocation.people),
+                    (
+                        allocation.team_signature
+                        or tuple(member.id for member in allocation.people)
+                    ),
                 )
                 for allocation in allocations
             ),
