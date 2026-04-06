@@ -2830,21 +2830,26 @@ def form_teams(
         )
 
     original_order = {task.id: index for index, task in enumerate(request.tasks)}
-    teams_payload = [
-        {
-            'taskId': allocation.task_id,
-            'people': [
+    ordered_allocations = sorted(
+        allocations,
+        key=lambda allocation: original_order[allocation.task_id],
+    )
+    teams_payload: list[dict[str, object]] = []
+    for allocation in ordered_allocations:
+        people_payload: list[dict[str, object]] = []
+        for person_id, skill_ids in allocation.assignments.items():
+            people_payload.append(
                 {
                     'id': person_id,
                     'skillIds': skill_ids,
                 }
-                for person_id, skill_ids in allocation.assignments.items()
-            ],
-            'quality': allocation.quality,
-        }
-        for allocation in sorted(
-            allocations,
-            key=lambda allocation: original_order[allocation.task_id],
+            )
+        teams_payload.append(
+            {
+                'taskId': allocation.task_id,
+                'people': people_payload,
+                'quality': allocation.quality,
+            }
         )
-    ]
+
     return TeamsResponse.model_validate({'teams': teams_payload})

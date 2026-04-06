@@ -1,10 +1,10 @@
 - Extend the new admissible greedy upper-bound pruning to additional safe paths (e.g. `build_scored_candidates` / exact-prep when `total_combinations <= max_candidate_teams`) while preserving current tie semantics.
 - Generalize the kept COMPAT scored-shortlist cap+1 fast path (`_best_scored_shortlist_candidate_with_compat_pruning`) to larger overshoot cases only if top-k/tie semantics can be proven equivalent.
 - Explore a broader `candidate_combinations()` ranked-selection redesign (algorithmic, not micro-tweaks), since many heap/list/comprehension/key-canonicalization micro-optimizations have consistently regressed.
-- Follow up on the latest kept improve_allocations chain (through `5d6aa55`) by targeting remaining structural swap overhead (cache lookup churn / dead-work paths), not branch-only micro-tweaks.
+- Follow up on the latest kept chain (through `4406a7c`) by targeting remaining structural swap/cache overhead, not branch-only micro-tweaks.
 - Investigate behavior-preserving reductions in `_compat_member_task_analysis` / `_compat_member_priority_order` that remove whole classes of work (not extra caching/branching), while keeping exact tie-breaking semantics.
 - Continue request-scoped immutable-data caching on the hottest score path only (task lookup/task preferences/team social-preference presence/resolved weights proved high leverage); avoid extending caches into colder paths unless profiling justifies it.
-- Re-validate commit `5d6aa55` (latest keep chain through exact-bound ordering, cached-score key canonicalization, lazy lexicographic checks, no-unused replacement skip, and batched final `TeamsResponse.model_validate` construction) when host latency returns to a stable band to confirm gains are not regime-specific and not benchmark-regime artifacts.
+- Re-validate commit `4406a7c` (latest keep chain through exact-bound ordering, cached-score key canonicalization, lazy lexicographic checks, no-unused replacement skip, batched final `TeamsResponse.model_validate` construction, and lazy randomizer instantiation) when host latency returns to a stable band to confirm gains are not regime-specific and not benchmark-regime artifacts.
 - Use immediate paired A/B validation (candidate run followed by no-code baseline, or vice versa) for marginal deltas while host variance remains high.
 - Host regime has shifted between ~1.5ms and ~1.1ms bands across this session; treat micro deltas cautiously and keep strict paired/no-code confirmations.
 
@@ -130,6 +130,7 @@ Pruned as stale/tried (do not retry without a materially different approach):
 - Per-loop 4-value skill-upper memoization in COMPAT cheap pruning loops (`(best0,best1,best2,best3) -> geometric_mean`) — regressed.
 - `_compat_candidate_social_upper_bound` cache-hit ordering swap (`social_cache` check before presence-cache check) — neutral/regressed.
 - Greedy <=cap COMPAT refactor that moves task-preference-log and task-skill-value prep entirely into cheap-bound cache-miss path — neutral/regressed under current noise.
+- Greedy <=cap exact-bound cached tuple slimming that drops stored candidate index (rely on stable sort/insertion order) — regressed and failed lint on unused enumerate index in initial attempt.
 - Manual `other_min` loop rewrite in swap pair iteration (replace generator+`min`) — regressed and triggered Ruff SIM109 style failure in initial form.
 - Direct raw-dict `TeamResult.people` construction in `form_teams` (bypass `assigned_people_from_assignments`) — checks failed (`ty` type mismatch) and regressed.
 - Internal validator dispatch shortcut (`TeamsResponse.__pydantic_validator__.validate_python`) replacing `TeamsResponse.model_validate(...)` — regressed.
