@@ -141,6 +141,20 @@ _REQUEST_COMPAT_SWAP_UPPER_BOUND_CACHES: dict[
     ],
 ] = {}
 
+_REQUEST_COMPAT_SHORTLISTS: dict[
+    tuple[
+        int,
+        str,
+        tuple[str, ...],
+        Mode,
+        WeightPreset | None,
+        bool,
+        int,
+        int,
+    ],
+    tuple[FormationRequest, tuple[Person, ...]],
+] = {}
+
 
 def _request_tasks_by_id(request: FormationRequest) -> dict[str, Task]:
     cache_key = id(request)
@@ -798,34 +812,52 @@ def _best_scored_shortlist_candidate_with_compat_pruning(
     ):
         shortlist_size += 1
 
-    shortlist: list[Person] = []
-    seen_ids: set[str] = set()
-    ranked_lists = [sorted(people, key=scorer, reverse=True)]
-    if alternate_scorers:
-        ranked_lists.extend(
-            sorted(people, key=alternate_scorer, reverse=True)
-            for alternate_scorer in alternate_scorers
+    shortlist_cache_key = (
+        id(request),
+        task.id,
+        tuple(person.id for person in people),
+        mode,
+        preset,
+        normalize_weights,
+        max_candidate_teams,
+        shortlist_padding,
+    )
+    cached_shortlist = _REQUEST_COMPAT_SHORTLISTS.get(shortlist_cache_key)
+    if cached_shortlist is not None and cached_shortlist[0] is request:
+        shortlist = [*cached_shortlist[1]]
+    else:
+        shortlist: list[Person] = []
+        seen_ids: set[str] = set()
+        ranked_lists = [sorted(people, key=scorer, reverse=True)]
+        if alternate_scorers:
+            ranked_lists.extend(
+                sorted(people, key=alternate_scorer, reverse=True)
+                for alternate_scorer in alternate_scorers
+            )
+
+        positions = [0] * len(ranked_lists)
+        while len(shortlist) < shortlist_size:
+            added = False
+            for ranking_index, ranking in enumerate(ranked_lists):
+                while positions[ranking_index] < len(ranking):
+                    person = ranking[positions[ranking_index]]
+                    positions[ranking_index] += 1
+                    if person.id in seen_ids:
+                        continue
+                    seen_ids.add(person.id)
+                    shortlist.append(person)
+                    added = True
+                    break
+                if len(shortlist) >= shortlist_size:
+                    break
+            if not added:
+                break
+
+        shortlist = [person for person in people if person.id in seen_ids]
+        _REQUEST_COMPAT_SHORTLISTS[shortlist_cache_key] = (
+            request,
+            tuple(shortlist),
         )
-
-    positions = [0] * len(ranked_lists)
-    while len(shortlist) < shortlist_size:
-        added = False
-        for ranking_index, ranking in enumerate(ranked_lists):
-            while positions[ranking_index] < len(ranking):
-                person = ranking[positions[ranking_index]]
-                positions[ranking_index] += 1
-                if person.id in seen_ids:
-                    continue
-                seen_ids.add(person.id)
-                shortlist.append(person)
-                added = True
-                break
-            if len(shortlist) >= shortlist_size:
-                break
-        if not added:
-            break
-
-    shortlist = [person for person in people if person.id in seen_ids]
     shortlist_total = math.comb(len(shortlist), task.team_size)
     if shortlist_total != max_candidate_teams + 1:
         return None
