@@ -1522,7 +1522,7 @@ def build_scored_candidates(
     normalize_weights: bool,
     max_candidate_teams: int | None,
     shortlist_padding: int,
-    randomizer: random.Random,
+    randomizer: random.Random | None,
     score_cache: dict[ScoreCacheKey, ScoredAllocation],
 ) -> list[list[tuple[int, ScoredAllocation]]]:
     person_index = {person.id: index for index, person in enumerate(request.people)}
@@ -1563,6 +1563,7 @@ def build_scored_candidates(
             combination_scorer=lambda candidate: scored_candidate(candidate).quality,
         )
         if request.init_random:
+            assert randomizer is not None
             candidates = list(candidates)
             randomizer.shuffle(candidates)
 
@@ -1591,7 +1592,7 @@ def greedy_allocations(
     normalize_weights: bool,
     max_candidate_teams: int | None,
     shortlist_padding: int,
-    randomizer: random.Random,
+    randomizer: random.Random | None,
     score_cache: dict[ScoreCacheKey, ScoredAllocation],
 ) -> tuple[list[ScoredAllocation], list[Person]]:
     remaining_people = list(request.people)
@@ -1760,6 +1761,7 @@ def greedy_allocations(
                     scored_combinations=pre_scored_candidates,
                 )
                 if request.init_random:
+                    assert randomizer is not None
                     candidates = list(candidates)
                     randomizer.shuffle(candidates)
 
@@ -2047,7 +2049,7 @@ def exact_allocations(
     normalize_weights: bool,
     max_candidate_teams: int | None,
     shortlist_padding: int,
-    randomizer: random.Random,
+    randomizer: random.Random | None,
     score_cache: dict[ScoreCacheKey, ScoredAllocation],
 ) -> tuple[list[ScoredAllocation], list[Person]] | None:
     task_candidates = [
@@ -2736,7 +2738,9 @@ def form_teams(
             'Cannot form teams with the provided data: insufficient headcount.'
         )
 
-    randomizer = random.Random(seed)
+    randomizer: random.Random | None = None
+    if request.init_random:
+        randomizer = random.Random(seed)
     score_cache: dict[ScoreCacheKey, ScoredAllocation] = {}
     if score_team is _ORIGINAL_SCORE_TEAM:
         form_score_cache_key = (
@@ -2779,6 +2783,7 @@ def form_teams(
         )
 
     if request.init_random:
+        assert randomizer is not None
         randomizer.shuffle(task_order)
 
     exact = None

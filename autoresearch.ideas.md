@@ -1,12 +1,12 @@
 - Extend the new admissible greedy upper-bound pruning to additional safe paths (e.g. `build_scored_candidates` / exact-prep when `total_combinations <= max_candidate_teams`) while preserving current tie semantics.
 - Generalize the kept COMPAT scored-shortlist cap+1 fast path (`_best_scored_shortlist_candidate_with_compat_pruning`) to larger overshoot cases only if top-k/tie semantics can be proven equivalent.
 - Explore a broader `candidate_combinations()` ranked-selection redesign (algorithmic, not micro-tweaks), since many heap/list/comprehension/key-canonicalization micro-optimizations have consistently regressed.
-- Follow up on kept swap-loop tuple-slice template win (`5fcc95d`) by targeting remaining swap overhead that is still structural (signature construction/cache lookup churn), not branch-only micro-tweaks.
+- Follow up on the latest kept improve_allocations chain (through `5d6aa55`) by targeting remaining structural swap overhead (cache lookup churn / dead-work paths), not branch-only micro-tweaks.
 - Investigate behavior-preserving reductions in `_compat_member_task_analysis` / `_compat_member_priority_order` that remove whole classes of work (not extra caching/branching), while keeping exact tie-breaking semantics.
 - Continue request-scoped immutable-data caching on the hottest score path only (task lookup/task preferences/team social-preference presence/resolved weights proved high leverage); avoid extending caches into colder paths unless profiling justifies it.
-- Re-validate commit `5fcc95d` (all prior keeps through `7a9bfc9`, plus swap-loop tuple-slice template construction in `improve_allocations`) when host latency returns to a stable band to confirm gains are not regime-specific and not benchmark-regime artifacts.
+- Re-validate commit `5d6aa55` (latest keep chain through exact-bound ordering, cached-score key canonicalization, lazy lexicographic checks, no-unused replacement skip, and batched final `TeamsResponse.model_validate` construction) when host latency returns to a stable band to confirm gains are not regime-specific and not benchmark-regime artifacts.
 - Use immediate paired A/B validation (candidate run followed by no-code baseline, or vice versa) for marginal deltas while host variance remains high.
-- Recent host regime drift moved active baseline from ~1.06ms to ~1.5ms on no-code reruns; treat micro deltas as unreliable until the fast band returns.
+- Host regime has shifted between ~1.5ms and ~1.1ms bands across this session; treat micro deltas cautiously and keep strict paired/no-code confirmations.
 
 Pruned as stale/tried (do not retry without a materially different approach):
 - Per-shortlist or global caching layers for explicit social-preference pair checks.
@@ -78,7 +78,7 @@ Pruned as stale/tried (do not retry without a materially different approach):
 - Greedy quality-only scoring path (`include_assignments=False` + `cached_score_team_quality`) with monkeypatch-safe fallback; added complexity but no net win after safeguards.
 - `_compat_member_priority_order` rich-key tuple-materialization removal (typed tuple task-value matrices) — regressed.
 - Request/task-scoped precomputed compat member-task value maps threaded into scoring (`compat_member_task_values_by_member_id`) — neutral under current noise.
-- `improve_allocations` `if unused_people` guard to skip no-op replacement pass when no reserves exist — neutral/regressed.
+- Early minimal `if unused_people` guard attempts in `improve_allocations` were neutral/regressed; superseded by kept `27c948a` dead-work elimination that skips replacement-phase setup/loops when reserves are empty.
 - `_compat_member_task_analysis` 4x4 specialized fast path (manual extraction/unrolled updates) — regressed.
 - `_compat_has_perfect_positive_matching` 4x4 bitmask-specialized fast path — neutral under current noise.
 - Request-order team-signature canonicalization with monotonic fast path (`person_id -> order index`) — neutral/regressed.
@@ -90,6 +90,7 @@ Pruned as stale/tried (do not retry without a materially different approach):
 - Collapsing two-stage greedy pruning into a single social-inclusive bound pass (compute social upper during cheap stage, remove exact-stage helper call) — regressed and increased complexity.
 - Single-pass swapped-team+signature construction rewrite in `improve_allocations` swap loop — neutral/slightly worse in end-to-end runs.
 - Per-round precompute of swap tuple-slice templates across all allocations (`swap_templates_by_allocation`) in `improve_allocations` — regressed.
+- Manual fixed-literal len-4 swap-template construction blocks (replace per-pair slice comprehensions for left/right teams) — regressed.
 - Earlier request-scoped COMPAT bound-prep cache variant (`_request_compat_bound_data_by_task_id`, pre-cache-heavy baseline) showed no clear win; superseded by the current kept `352239e` swap-bound-prep cache approach.
 - 4-member task-preference-log unrolled aggregation in COMPAT bound loops (`team_signature`-indexed log lookups) — regressed.
 - Cheap-bound sort-key rewrite using stored `-index` plus `sort(reverse=True)` (remove lambda key) — regressed.
@@ -99,6 +100,7 @@ Pruned as stale/tried (do not retry without a materially different approach):
 - 4x4 skill-upper direct geometric-mean composition (avoid `task_skill_bests` list + `geometric_mean(...)`) — regressed.
 - In-place `allocations` mutation in `improve_allocations` (remove accepted-move `allocations.copy()`) — inconclusive/near-noise.
 - Manual branch-unrolled index-based 4-member swap-team tuple construction in `improve_allocations` (replace tuple-comprehension/id-match generation without slice-template precompute) — regressed; prefer the kept tuple-slice template approach from `5fcc95d`.
+- Swap-loop signature construction via precomputed prefix/suffix ID tuples in swap templates (build signatures with tuple concat instead of reading swapped team ids) — regressed.
 - Replacement-phase slice-template rewrite for member→unused substitutions in `improve_allocations` — regressed.
 - Replacement-phase `unused_people` tuple snapshot reuse (instead of per-member `list(unused_people)`) — regressed.
 - Inlined two-member COMPAT gender-bonus arithmetic inside `team_personality_score` fast path (replace `_compat_gender_bonus` call) — regressed.
@@ -111,6 +113,8 @@ Pruned as stale/tried (do not retry without a materially different approach):
 - Swap-phase bound-cache key canonicalization via `tuple(sorted(swapped_signature))` in `improve_allocations` — regressed.
 - Swap-phase per-pair bound-data/cache lookup hoist in `improve_allocations` (move task-bound tuple unpack + cache map retrieval outside inner member loops) — regressed.
 - Ternary clamp rewrite replacing `max(value, 1e-12)` in allocation/swap objective product paths — regressed.
+- Manual branch rewrite of swap upper-bound triple-min (`min(other_min, left_upper, right_upper)`) — regressed.
+- Swap upper-bound cache payload expansion to store `(raw_upper_bound, clamped_upper_bound)` tuples (remove repeated clamp calls) — regressed.
 - Guarded non-negative/finite fast-path arithmetic for `_objective_component_less/_greater` (fallback to `math.isclose` for negatives/infinities) — regressed due branch overhead.
 - Scalar `_objective_better_values(...)` helper used only to avoid tuple construction at swap upper-bound checks — regressed.
 - Precomputed incumbent `best_quality` less-cutoff scalar in COMPAT cap+1 / greedy <=cap pruning loops (replace `_objective_component_less` checks with direct `< cutoff`) — regressed.
@@ -128,3 +132,6 @@ Pruned as stale/tried (do not retry without a materially different approach):
 - Greedy <=cap COMPAT refactor that moves task-preference-log and task-skill-value prep entirely into cheap-bound cache-miss path — neutral/regressed under current noise.
 - Manual `other_min` loop rewrite in swap pair iteration (replace generator+`min`) — regressed and triggered Ruff SIM109 style failure in initial form.
 - Direct raw-dict `TeamResult.people` construction in `form_teams` (bypass `assigned_people_from_assignments`) — checks failed (`ty` type mismatch) and regressed.
+- Internal validator dispatch shortcut (`TeamsResponse.__pydantic_validator__.validate_python`) replacing `TeamsResponse.model_validate(...)` — regressed.
+- Request-scoped cache for per-allocation final people payload lists in output construction — regressed.
+- Tuple-based final payload containers (teams/people tuples) for `TeamsResponse.model_validate` — regressed.
