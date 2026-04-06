@@ -1078,6 +1078,7 @@ def _best_scored_shortlist_candidate_with_compat_pruning(
 
         cheap_bounded_candidates.sort(
             key=lambda entry: (
+                entry[1],
                 entry[0],
                 -entry[2],
             ),
@@ -1091,7 +1092,7 @@ def _best_scored_shortlist_candidate_with_compat_pruning(
         )
 
     for (
-        cheap_upper_bound,
+        _cheap_upper_bound,
         exact_upper_bound,
         index,
         candidate,
@@ -1099,15 +1100,9 @@ def _best_scored_shortlist_candidate_with_compat_pruning(
     ) in cheap_bounded_candidates:
         if (
             best is not None
-            and _objective_component_less(cheap_upper_bound, best_quality)
-        ):
-            break
-
-        if (
-            best is not None
             and _objective_component_less(exact_upper_bound, best_quality)
         ):
-            continue
+            break
 
         scored_allocation = cached_score_team(
             request,
@@ -1917,6 +1912,7 @@ def greedy_allocations(
 
                     cheap_bounded_candidates.sort(
                         key=lambda entry: (
+                            entry[1],
                             entry[0],
                             -entry[2],
                         ),
@@ -1938,7 +1934,7 @@ def greedy_allocations(
 
                 assert compat_greedy_cheap_bounded_candidates is not None
                 for (
-                    cheap_upper_bound,
+                    _cheap_upper_bound,
                     exact_upper_bound,
                     _index,
                     candidate,
@@ -1947,20 +1943,11 @@ def greedy_allocations(
                     if (
                         best is not None
                         and _objective_component_less(
-                            cheap_upper_bound,
-                            best_quality,
-                        )
-                    ):
-                        break
-
-                    if (
-                        best is not None
-                        and _objective_component_less(
                             exact_upper_bound,
                             best_quality,
                         )
                     ):
-                        continue
+                        break
 
                     scored_allocation = scored_candidate(candidate)
                     quality = scored_allocation.quality
