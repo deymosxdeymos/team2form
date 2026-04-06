@@ -9,13 +9,12 @@ from dataclasses import dataclass
 from functools import cache
 from typing import overload
 
-from .models import FormationRequest, Person, Task, TeamResult, TeamsResponse
+from .models import FormationRequest, Person, Task, TeamsResponse
 from .modes import Mode, WeightPreset
 from .scoring import (
     _calculate_team_quality_components_for_people,
     _compat_member_task_values,
     _task_preference_score,
-    assigned_people_from_assignments,
     coverage_for_person_and_task_skill,
     geometric_mean,
     preference_lookup,
@@ -2826,15 +2825,21 @@ def form_teams(
         )
 
     original_order = {task.id: index for index, task in enumerate(request.tasks)}
-    teams = [
-        TeamResult(
-            taskId=allocation.task_id,
-            people=assigned_people_from_assignments(allocation.assignments),
-            quality=allocation.quality,
-        )
+    teams_payload = [
+        {
+            'taskId': allocation.task_id,
+            'people': [
+                {
+                    'id': person_id,
+                    'skillIds': skill_ids,
+                }
+                for person_id, skill_ids in allocation.assignments.items()
+            ],
+            'quality': allocation.quality,
+        }
         for allocation in sorted(
             allocations,
             key=lambda allocation: original_order[allocation.task_id],
         )
     ]
-    return TeamsResponse(teams=teams)
+    return TeamsResponse.model_validate({'teams': teams_payload})
