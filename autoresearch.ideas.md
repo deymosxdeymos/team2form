@@ -3,7 +3,7 @@
 - Explore a broader `candidate_combinations()` ranked-selection redesign (algorithmic, not micro-tweaks), since many heap/list/comprehension/key-canonicalization micro-optimizations have consistently regressed.
 - Investigate behavior-preserving reductions in `_compat_member_task_analysis` / `_compat_member_priority_order` that remove whole classes of work (not extra caching/branching), while keeping exact tie-breaking semantics.
 - Continue request-scoped immutable-data caching on the hottest score path only (task lookup/task preferences/team social-preference presence/resolved weights proved high leverage); avoid extending caches into colder paths unless profiling justifies it.
-- Re-validate commit `7320de4` (all prior keeps through `c7576b5`, plus persistent request-scoped `score_cache` reuse in `form_teams` for original scoring path) when host latency returns to a stable band to confirm gains are not regime-specific and not benchmark-regime artifacts.
+- Re-validate commit `352239e` (all prior keeps through `7320de4`, plus request-scoped swap bound-prep data caching by task in `improve_allocations`) when host latency returns to a stable band to confirm gains are not regime-specific and not benchmark-regime artifacts.
 - Use immediate paired A/B validation (candidate run followed by no-code baseline, or vice versa) for marginal deltas while host variance remains high.
 
 Pruned as stale/tried (do not retry without a materially different approach):
@@ -87,7 +87,7 @@ Pruned as stale/tried (do not retry without a materially different approach):
 - Earlier swap-loop upper-bound memoization variant in `improve_allocations` (pre-`23b25ec` regime) regressed due cache/key overhead; only the current kept `78ce3d9` formulation should be considered baseline.
 - Collapsing two-stage greedy pruning into a single social-inclusive bound pass (compute social upper during cheap stage, remove exact-stage helper call) — regressed and increased complexity.
 - Single-pass swapped-team+signature construction rewrite in `improve_allocations` swap loop — neutral/slightly worse in end-to-end runs.
-- Request-scoped cached COMPAT bound-prep layer (`_request_compat_bound_data_by_task_id`) — no clear win under current noise versus added complexity.
+- Earlier request-scoped COMPAT bound-prep cache variant (`_request_compat_bound_data_by_task_id`, pre-cache-heavy baseline) showed no clear win; superseded by the current kept `352239e` swap-bound-prep cache approach.
 - 4-member task-preference-log unrolled aggregation in COMPAT bound loops (`team_signature`-indexed log lookups) — regressed.
 - Cheap-bound sort-key rewrite using stored `-index` plus `sort(reverse=True)` (remove lambda key) — regressed.
 - Local scalar hoisting of resolved weights (`alpha/beta/gamma/delta`) inside cheap-bound and upper-bound loops — regressed.

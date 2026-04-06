@@ -176,6 +176,11 @@ _REQUEST_FORM_SCORE_CACHES: dict[
     tuple[FormationRequest, dict[ScoreCacheKey, ScoredAllocation]],
 ] = {}
 
+_REQUEST_TASK_ORDER_BY_HARDNESS: dict[
+    tuple[int, Mode],
+    tuple[FormationRequest, tuple[Task, ...]],
+] = {}
+
 
 def _request_tasks_by_id(request: FormationRequest) -> dict[str, Task]:
     cache_key = id(request)
@@ -2687,10 +2692,25 @@ def form_teams(
                 score_cache,
             )
 
-    task_order = list(request.tasks)
-    task_order.sort(
-        key=lambda task: (-task_hardness(task.id, request, mode=mode), task.id)
+    task_order_cache_key = (id(request), mode)
+    cached_task_order = _REQUEST_TASK_ORDER_BY_HARDNESS.get(
+        task_order_cache_key
     )
+    if cached_task_order is not None and cached_task_order[0] is request:
+        task_order = [*cached_task_order[1]]
+    else:
+        task_order = list(request.tasks)
+        task_order.sort(
+            key=lambda task: (
+                -task_hardness(task.id, request, mode=mode),
+                task.id,
+            )
+        )
+        _REQUEST_TASK_ORDER_BY_HARDNESS[task_order_cache_key] = (
+            request,
+            tuple(task_order),
+        )
+
     if request.init_random:
         randomizer.shuffle(task_order)
 
