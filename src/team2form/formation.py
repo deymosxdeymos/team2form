@@ -2409,7 +2409,6 @@ def improve_allocations(
             current_product *= quality
         current_min = min(qualities) if qualities else 0.0
         current_sum = sum(qualities)
-        current_objective = (current_product, current_min, current_sum)
         min_without_index = [
             min(
                 (
@@ -2446,16 +2445,32 @@ def improve_allocations(
                         / old_quality_for_product
                         * max(replacement_quality, 1e-12)
                     )
-                    trial_sum = current_sum - old_quality + replacement_quality
-                    if old_quality == current_min:
-                        trial_min = min(
-                            replacement_quality,
-                            min_without_index[allocation_index],
-                        )
+                    if trial_product > current_product:
+                        better_replacement = True
+                    elif trial_product < current_product:
+                        better_replacement = False
                     else:
-                        trial_min = min(current_min, replacement_quality)
+                        if old_quality == current_min:
+                            trial_min = min(
+                                replacement_quality,
+                                min_without_index[allocation_index],
+                            )
+                        else:
+                            trial_min = min(current_min, replacement_quality)
 
-                    if (trial_product, trial_min, trial_sum) > current_objective:
+                        if trial_min > current_min:
+                            better_replacement = True
+                        elif trial_min < current_min:
+                            better_replacement = False
+                        else:
+                            trial_sum = (
+                                current_sum
+                                - old_quality
+                                + replacement_quality
+                            )
+                            better_replacement = trial_sum > current_sum
+
+                    if better_replacement:
                         allocations = allocations.copy()
                         allocations[allocation_index] = rescored_allocation
                         unused_people.remove(unused_person)
@@ -2685,18 +2700,29 @@ def improve_allocations(
                         * max(rescored_left.quality, 1e-12)
                         * max(rescored_right.quality, 1e-12)
                     )
-                    trial_sum = (
-                        pair_sum_base
-                        + rescored_left.quality
-                        + rescored_right.quality
-                    )
-                    trial_min = min(
-                        other_min,
-                        rescored_left.quality,
-                        rescored_right.quality,
-                    )
+                    if trial_product > current_product:
+                        better_swap = True
+                    elif trial_product < current_product:
+                        better_swap = False
+                    else:
+                        trial_min = min(
+                            other_min,
+                            rescored_left.quality,
+                            rescored_right.quality,
+                        )
+                        if trial_min > current_min:
+                            better_swap = True
+                        elif trial_min < current_min:
+                            better_swap = False
+                        else:
+                            trial_sum = (
+                                pair_sum_base
+                                + rescored_left.quality
+                                + rescored_right.quality
+                            )
+                            better_swap = trial_sum > current_sum
 
-                    if (trial_product, trial_min, trial_sum) > current_objective:
+                    if better_swap:
                         allocations = allocations.copy()
                         allocations[left_index] = rescored_left
                         allocations[right_index] = rescored_right
