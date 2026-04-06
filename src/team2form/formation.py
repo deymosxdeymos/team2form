@@ -210,6 +210,11 @@ _REQUEST_TASK_ORDER_BY_HARDNESS: dict[
     tuple[FormationRequest, tuple[Task, ...]],
 ] = {}
 
+_REQUEST_TASK_ORIGINAL_ORDER: dict[
+    int,
+    tuple[FormationRequest, dict[str, int]],
+] = {}
+
 
 def _request_tasks_by_id(request: FormationRequest) -> dict[str, Task]:
     cache_key = id(request)
@@ -220,6 +225,21 @@ def _request_tasks_by_id(request: FormationRequest) -> dict[str, Task]:
     tasks_by_id = {task.id: task for task in request.tasks}
     _REQUEST_TASKS_BY_ID[cache_key] = (request, tasks_by_id)
     return tasks_by_id
+
+
+def _request_task_original_order(
+    request: FormationRequest,
+) -> dict[str, int]:
+    cache_key = id(request)
+    cached = _REQUEST_TASK_ORIGINAL_ORDER.get(cache_key)
+    if cached is not None and cached[0] is request:
+        return cached[1]
+
+    task_original_order = {
+        task.id: index for index, task in enumerate(request.tasks)
+    }
+    _REQUEST_TASK_ORIGINAL_ORDER[cache_key] = (request, task_original_order)
+    return task_original_order
 
 
 def _request_task_preferences_by_task_id(
@@ -3078,7 +3098,7 @@ def form_teams(
             score_cache=score_cache,
         )
 
-    original_order = {task.id: index for index, task in enumerate(request.tasks)}
+    original_order = _request_task_original_order(request)
     ordered_allocations = sorted(
         allocations,
         key=lambda allocation: original_order[allocation.task_id],

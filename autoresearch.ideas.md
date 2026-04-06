@@ -165,4 +165,5 @@ Pruned as stale/tried (do not retry without a materially different approach):
 - Deterministic form-level allocations cache in `form_teams` (skip exact/greedy/improve on warm hits) was only marginal/inconclusive and increases request-reuse coupling; keep it pruned unless workload evidence justifies broader memoization.
 - Output-path rewrite replacing final sort with `allocations_by_task_id` lookup map (iterate tasks in order) regressed under warm-path regime.
 - Request-scoped teams-payload reuse cache in `form_teams` (keyed by ordered allocation identities, reuse payload dicts before `TeamsResponse.model_validate`) was inconclusive/near-noise and adds mutable-output cache risk.
+- Direct reversion A/B of `ce00bb2` (`ScoredAllocation.team_signature` + improve-cache-key reuse) did not recover faster medians; keep retained pending further paired sampling.
 - Partial direct-cache rewrites that mutate/reuse base team-id locals across iterations are error-prone (caused quality assertion failure during exploration); keep canonicalization variables strictly local per candidate.
