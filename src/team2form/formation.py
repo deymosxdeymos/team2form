@@ -2383,81 +2383,91 @@ def improve_allocations(
             current_product *= quality
         current_min = min(qualities) if qualities else 0.0
         current_sum = sum(qualities)
-        min_without_index = [
-            min(
-                (
-                    quality
-                    for quality_index, quality in enumerate(qualities)
-                    if quality_index != allocation_index
-                ),
-                default=0.0,
-            )
-            for allocation_index in range(len(qualities))
-        ]
+        if unused_people:
+            min_without_index = [
+                min(
+                    (
+                        quality
+                        for quality_index, quality in enumerate(qualities)
+                        if quality_index != allocation_index
+                    ),
+                    default=0.0,
+                )
+                for allocation_index in range(len(qualities))
+            ]
 
-        for allocation_index, allocation in enumerate(allocations):
-            old_quality = qualities[allocation_index]
-            old_quality_for_product = clamped_qualities[allocation_index]
-            for member in allocation.people:
-                for unused_person in list(unused_people):
-                    replacement_team = tuple(
-                        unused_person if candidate.id == member.id else candidate
-                        for candidate in allocation.people
-                    )
-                    rescored_allocation = cached_score_team(
-                        request,
-                        task_id=allocation.task_id,
-                        people=replacement_team,
-                        mode=mode,
-                        preset=preset,
-                        normalize_weights=normalize_weights,
-                        score_cache=score_cache,
-                    )
-                    replacement_quality = rescored_allocation.quality
-                    trial_product = (
-                        current_product
-                        / old_quality_for_product
-                        * max(replacement_quality, 1e-12)
-                    )
-                    if trial_product > current_product:
-                        better_replacement = True
-                    elif trial_product < current_product:
-                        better_replacement = False
-                    else:
-                        if old_quality == current_min:
-                            trial_min = min(
-                                replacement_quality,
-                                min_without_index[allocation_index],
-                            )
-                        else:
-                            trial_min = min(current_min, replacement_quality)
-
-                        if trial_min > current_min:
+            for allocation_index, allocation in enumerate(allocations):
+                old_quality = qualities[allocation_index]
+                old_quality_for_product = clamped_qualities[allocation_index]
+                for member in allocation.people:
+                    for unused_person in list(unused_people):
+                        replacement_team = tuple(
+                            unused_person
+                            if candidate.id == member.id
+                            else candidate
+                            for candidate in allocation.people
+                        )
+                        rescored_allocation = cached_score_team(
+                            request,
+                            task_id=allocation.task_id,
+                            people=replacement_team,
+                            mode=mode,
+                            preset=preset,
+                            normalize_weights=normalize_weights,
+                            score_cache=score_cache,
+                        )
+                        replacement_quality = rescored_allocation.quality
+                        trial_product = (
+                            current_product
+                            / old_quality_for_product
+                            * max(replacement_quality, 1e-12)
+                        )
+                        if trial_product > current_product:
                             better_replacement = True
-                        elif trial_min < current_min:
+                        elif trial_product < current_product:
                             better_replacement = False
                         else:
-                            trial_sum = (
-                                current_sum
-                                - old_quality
-                                + replacement_quality
-                            )
-                            better_replacement = trial_sum > current_sum
+                            if old_quality == current_min:
+                                trial_min = min(
+                                    replacement_quality,
+                                    min_without_index[allocation_index],
+                                )
+                            else:
+                                trial_min = min(
+                                    current_min,
+                                    replacement_quality,
+                                )
 
-                    if better_replacement:
-                        allocations = allocations.copy()
-                        allocations[allocation_index] = rescored_allocation
-                        unused_people.remove(unused_person)
-                        unused_people.append(member)
-                        improved = True
+                            if trial_min > current_min:
+                                better_replacement = True
+                            elif trial_min < current_min:
+                                better_replacement = False
+                            else:
+                                trial_sum = (
+                                    current_sum
+                                    - old_quality
+                                    + replacement_quality
+                                )
+                                better_replacement = (
+                                    trial_sum > current_sum
+                                )
+
+                        if better_replacement:
+                            allocations = allocations.copy()
+                            allocations[allocation_index] = (
+                                rescored_allocation
+                            )
+                            unused_people.remove(unused_person)
+                            unused_people.append(member)
+                            improved = True
+                            break
+                    if improved:
                         break
                 if improved:
                     break
-            if improved:
-                break
 
-        if improved:
-            continue
+            if improved:
+                continue
 
         for left_index, right_index in itertools.combinations(
             range(len(allocations)), 2
