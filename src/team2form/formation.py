@@ -133,6 +133,14 @@ _REQUEST_COMPAT_GREEDY_CHEAP_BOUNDED_CANDIDATES: dict[
     ],
 ] = {}
 
+_REQUEST_COMPAT_SWAP_UPPER_BOUND_CACHES: dict[
+    tuple[int, Mode, WeightPreset | None, bool],
+    tuple[
+        FormationRequest,
+        dict[str, dict[tuple[str, ...], float]],
+    ],
+] = {}
+
 
 def _request_tasks_by_id(request: FormationRequest) -> dict[str, Task]:
     cache_key = id(request)
@@ -2198,6 +2206,34 @@ def improve_allocations(
             compat_bound_social_cache,
             compat_bound_social_presence_cache,
         ) = _request_team_component_caches(request)
+
+        swap_upper_bound_cache_key = (
+            id(request),
+            mode,
+            preset,
+            normalize_weights,
+        )
+        cached_swap_upper_bound_caches = (
+            _REQUEST_COMPAT_SWAP_UPPER_BOUND_CACHES.get(
+                swap_upper_bound_cache_key
+            )
+        )
+        if (
+            cached_swap_upper_bound_caches is not None
+            and cached_swap_upper_bound_caches[0] is request
+        ):
+            compat_swap_upper_bound_cache_by_task_id = (
+                cached_swap_upper_bound_caches[1]
+            )
+        else:
+            compat_swap_upper_bound_cache_by_task_id = {}
+            _REQUEST_COMPAT_SWAP_UPPER_BOUND_CACHES[
+                swap_upper_bound_cache_key
+            ] = (
+                request,
+                compat_swap_upper_bound_cache_by_task_id,
+            )
+
         tasks_by_id = _request_tasks_by_id(request)
         task_preferences_by_task_id = _request_task_preferences_by_task_id(request)
         for task_id in {allocation.task_id for allocation in allocations}:
@@ -2232,7 +2268,7 @@ def improve_allocations(
                 task_preference_logs_by_person_id,
                 task_skill_values_by_person_id,
             )
-            compat_swap_upper_bound_cache_by_task_id[task_id] = {}
+            compat_swap_upper_bound_cache_by_task_id.setdefault(task_id, {})
 
     improved = True
     rounds = 0

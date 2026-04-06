@@ -3,7 +3,7 @@
 - Explore a broader `candidate_combinations()` ranked-selection redesign (algorithmic, not micro-tweaks), since many heap/list/comprehension/key-canonicalization micro-optimizations have consistently regressed.
 - Investigate behavior-preserving reductions in `_compat_member_task_analysis` / `_compat_member_priority_order` that remove whole classes of work (not extra caching/branching), while keeping exact tie-breaking semantics.
 - Continue request-scoped immutable-data caching on the hottest score path only (task lookup/task preferences/team social-preference presence/resolved weights proved high leverage); avoid extending caches into colder paths unless profiling justifies it.
-- Re-validate commit `fc8b7b4` (all prior keeps through `78ce3d9`, plus COMPAT `len(team)==4` personality fast path from `3662dfa` and its sum/sum-of-squares variance refinement from `fc8b7b4`) when host latency returns to a stable band to confirm gains are not regime-specific.
+- Re-validate commit `4c0b6ce` (all prior keeps through `fc8b7b4`, plus request-scoped sorted cheap-bounded candidate caching in both cap+1 shortlist COMPAT pruning (`f3404c3`) and greedy <=cap COMPAT pruning (`4c0b6ce`)) when host latency returns to a stable band to confirm gains are not regime-specific.
 - Use immediate paired A/B validation (candidate run followed by no-code baseline, or vice versa) for marginal deltas while host variance remains high.
 
 Pruned as stale/tried (do not retry without a materially different approach):
