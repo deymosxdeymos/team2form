@@ -1084,10 +1084,7 @@ def _best_scored_shortlist_candidate_with_compat_pruning(
         index,
         candidate,
     ) in cheap_bounded_candidates:
-        if (
-            best is not None
-            and _objective_component_less(exact_upper_bound, best_quality)
-        ):
+        if _objective_component_less(exact_upper_bound, best_quality):
             break
 
         scored_allocation = cached_score_team(
@@ -1934,12 +1931,9 @@ def greedy_allocations(
                     _index,
                     candidate,
                 ) in compat_greedy_cheap_bounded_candidates:
-                    if (
-                        best is not None
-                        and _objective_component_less(
-                            exact_upper_bound,
-                            best_quality,
-                        )
+                    if _objective_component_less(
+                        exact_upper_bound,
+                        best_quality,
                     ):
                         break
 
