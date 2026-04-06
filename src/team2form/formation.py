@@ -2627,16 +2627,6 @@ def improve_allocations(
                             * max(left_upper_bound, 1e-12)
                             * max(right_upper_bound, 1e-12)
                         )
-                        upper_trial_sum = (
-                            pair_sum_base
-                            + left_upper_bound
-                            + right_upper_bound
-                        )
-                        upper_trial_min = min(
-                            other_min,
-                            left_upper_bound,
-                            right_upper_bound,
-                        )
                         if _objective_component_less(
                             upper_trial_product,
                             current_product,
@@ -2646,6 +2636,11 @@ def improve_allocations(
                             upper_trial_product,
                             current_product,
                         ):
+                            upper_trial_min = min(
+                                other_min,
+                                left_upper_bound,
+                                right_upper_bound,
+                            )
                             if _objective_component_less(
                                 upper_trial_min,
                                 current_min,
@@ -2654,11 +2649,17 @@ def improve_allocations(
                             if _objective_component_close(
                                 upper_trial_min,
                                 current_min,
-                            ) and _objective_component_less(
-                                upper_trial_sum,
-                                current_sum,
                             ):
-                                continue
+                                upper_trial_sum = (
+                                    pair_sum_base
+                                    + left_upper_bound
+                                    + right_upper_bound
+                                )
+                                if _objective_component_less(
+                                    upper_trial_sum,
+                                    current_sum,
+                                ):
+                                    continue
 
                     rescored_left = cached_score_team(
                         request,
