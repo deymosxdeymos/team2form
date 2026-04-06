@@ -155,6 +155,11 @@ _REQUEST_COMPAT_SHORTLISTS: dict[
     tuple[FormationRequest, tuple[Person, ...]],
 ] = {}
 
+_REQUEST_FORM_SCORE_CACHES: dict[
+    tuple[int, Mode, WeightPreset | None, bool],
+    tuple[FormationRequest, dict[ScoreCacheKey, ScoredAllocation]],
+] = {}
+
 
 def _request_tasks_by_id(request: FormationRequest) -> dict[str, Task]:
     cache_key = id(request)
@@ -2609,6 +2614,27 @@ def form_teams(
 
     randomizer = random.Random(seed)
     score_cache: dict[ScoreCacheKey, ScoredAllocation] = {}
+    if score_team is _ORIGINAL_SCORE_TEAM:
+        form_score_cache_key = (
+            id(request),
+            mode,
+            preset,
+            normalize_weights,
+        )
+        cached_form_score_cache = _REQUEST_FORM_SCORE_CACHES.get(
+            form_score_cache_key
+        )
+        if (
+            cached_form_score_cache is not None
+            and cached_form_score_cache[0] is request
+        ):
+            score_cache = cached_form_score_cache[1]
+        else:
+            _REQUEST_FORM_SCORE_CACHES[form_score_cache_key] = (
+                request,
+                score_cache,
+            )
+
     task_order = list(request.tasks)
     task_order.sort(
         key=lambda task: (-task_hardness(task.id, request, mode=mode), task.id)
