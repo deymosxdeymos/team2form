@@ -110,6 +110,29 @@ _REQUEST_COMPAT_SHORTLIST_CHEAP_BOUNDED_CANDIDATES: dict[
     ],
 ] = {}
 
+_REQUEST_COMPAT_GREEDY_CHEAP_BOUNDED_CANDIDATES: dict[
+    tuple[
+        int,
+        str,
+        tuple[str, ...],
+        Mode,
+        WeightPreset | None,
+        bool,
+    ],
+    tuple[
+        FormationRequest,
+        list[
+            tuple[
+                float,
+                float,
+                int,
+                tuple[Person, ...],
+                tuple[str, ...],
+            ]
+        ],
+    ],
+] = {}
+
 
 def _request_tasks_by_id(request: FormationRequest) -> dict[str, Task]:
     cache_key = id(request)
@@ -1518,6 +1541,24 @@ def greedy_allocations(
         social_cache: dict[tuple[float, tuple[str, ...]], float] = {}
         social_preference_presence_cache: dict[tuple[str, ...], bool] = {}
         resolved_weights = None
+        compat_greedy_cheap_bounded_candidates: list[
+            tuple[
+                float,
+                float,
+                int,
+                tuple[Person, ...],
+                tuple[str, ...],
+            ]
+        ] | None = None
+        compat_greedy_cheap_bounded_candidates_cache_key: tuple[
+            int,
+            str,
+            tuple[str, ...],
+            Mode,
+            WeightPreset | None,
+            bool,
+        ] | None = None
+
         if use_upper_bound_pruning:
             task_preferences = _request_task_preferences_by_task_id(request)[task_id]
             task_preference_default = 0.0 if not task_preferences else 0.5
@@ -1554,6 +1595,27 @@ def greedy_allocations(
                 preset=preset,
                 normalize_weights=normalize_weights,
             )
+
+            compat_greedy_cheap_bounded_candidates_cache_key = (
+                id(request),
+                task_id,
+                tuple(person.id for person in remaining_people),
+                mode,
+                preset,
+                normalize_weights,
+            )
+            cached_compat_greedy_cheap_bounded_candidates = (
+                _REQUEST_COMPAT_GREEDY_CHEAP_BOUNDED_CANDIDATES.get(
+                    compat_greedy_cheap_bounded_candidates_cache_key
+                )
+            )
+            if (
+                cached_compat_greedy_cheap_bounded_candidates is not None
+                and cached_compat_greedy_cheap_bounded_candidates[0] is request
+            ):
+                compat_greedy_cheap_bounded_candidates = (
+                    cached_compat_greedy_cheap_bounded_candidates[1]
+                )
 
         def scored_candidate(
             candidate: tuple[Person, ...],
@@ -1623,134 +1685,164 @@ def greedy_allocations(
                 best_quality = float('-inf')
                 best_ids: tuple[str, ...] | None = None
 
-                cheap_bounded_candidates: list[
-                    tuple[
-                        float,
-                        float,
-                        int,
-                        tuple[Person, ...],
-                        tuple[str, ...],
-                    ]
-                ] = []
-                for index, candidate in enumerate(candidates):
-                    if len(candidate) == 4:
-                        team_signature = (
-                            candidate[0].id,
-                            candidate[1].id,
-                            candidate[2].id,
-                            candidate[3].id,
-                        )
-                    else:
-                        team_signature = tuple(member.id for member in candidate)
+                if compat_greedy_cheap_bounded_candidates is None:
+                    cheap_bounded_candidates: list[
+                        tuple[
+                            float,
+                            float,
+                            int,
+                            tuple[Person, ...],
+                            tuple[str, ...],
+                        ]
+                    ] = []
+                    for index, candidate in enumerate(candidates):
+                        if len(candidate) == 4:
+                            team_signature = (
+                                candidate[0].id,
+                                candidate[1].id,
+                                candidate[2].id,
+                                candidate[3].id,
+                            )
+                        else:
+                            team_signature = tuple(
+                                member.id for member in candidate
+                            )
 
-                    personality_cache_key = (Mode.COMPAT, team_signature)
-                    personality_score = personality_cache.get(personality_cache_key)
-                    if personality_score is None:
-                        personality_score = team_personality_score(
-                            candidate,
-                            mode=Mode.COMPAT,
+                        personality_cache_key = (Mode.COMPAT, team_signature)
+                        personality_score = personality_cache.get(
+                            personality_cache_key
                         )
-                        personality_cache[personality_cache_key] = (
-                            personality_score
-                        )
+                        if personality_score is None:
+                            personality_score = team_personality_score(
+                                candidate,
+                                mode=Mode.COMPAT,
+                            )
+                            personality_cache[personality_cache_key] = (
+                                personality_score
+                            )
 
-                    task_preference_log_sum = 0.0
-                    for member in candidate:
-                        task_preference_log = task_preference_logs[member.id]
-                        if task_preference_log is None:
-                            task_preference_score = 0.0
-                            break
-                        task_preference_log_sum += task_preference_log
-                    else:
-                        task_preference_score = math.exp(
-                            task_preference_log_sum / len(candidate)
-                        )
+                        task_preference_log_sum = 0.0
+                        for member in candidate:
+                            task_preference_log = task_preference_logs[member.id]
+                            if task_preference_log is None:
+                                task_preference_score = 0.0
+                                break
+                            task_preference_log_sum += task_preference_log
+                        else:
+                            task_preference_score = math.exp(
+                                task_preference_log_sum / len(candidate)
+                            )
 
-                    first_task_skill_values = task_skill_values_by_person_id[
-                        team_signature[0]
-                    ]
-                    if len(candidate) == 4 and len(first_task_skill_values) == 4:
-                        second_task_skill_values = task_skill_values_by_person_id[
-                            team_signature[1]
+                        first_task_skill_values = task_skill_values_by_person_id[
+                            team_signature[0]
                         ]
-                        third_task_skill_values = task_skill_values_by_person_id[
-                            team_signature[2]
-                        ]
-                        fourth_task_skill_values = task_skill_values_by_person_id[
-                            team_signature[3]
-                        ]
-                        max_value = max
-                        task_skill_bests = [
-                            max_value(
-                                first_task_skill_values[0],
-                                second_task_skill_values[0],
-                                third_task_skill_values[0],
-                                fourth_task_skill_values[0],
-                            ),
-                            max_value(
-                                first_task_skill_values[1],
-                                second_task_skill_values[1],
-                                third_task_skill_values[1],
-                                fourth_task_skill_values[1],
-                            ),
-                            max_value(
-                                first_task_skill_values[2],
-                                second_task_skill_values[2],
-                                third_task_skill_values[2],
-                                fourth_task_skill_values[2],
-                            ),
-                            max_value(
-                                first_task_skill_values[3],
-                                second_task_skill_values[3],
-                                third_task_skill_values[3],
-                                fourth_task_skill_values[3],
-                            ),
-                        ]
-                    else:
-                        task_skill_bests = [*first_task_skill_values]
-                        for member in candidate[1:]:
-                            task_skill_values = task_skill_values_by_person_id[
-                                member.id
+                        if (
+                            len(candidate) == 4
+                            and len(first_task_skill_values) == 4
+                        ):
+                            second_task_skill_values = (
+                                task_skill_values_by_person_id[
+                                    team_signature[1]
+                                ]
+                            )
+                            third_task_skill_values = (
+                                task_skill_values_by_person_id[
+                                    team_signature[2]
+                                ]
+                            )
+                            fourth_task_skill_values = (
+                                task_skill_values_by_person_id[
+                                    team_signature[3]
+                                ]
+                            )
+                            max_value = max
+                            task_skill_bests = [
+                                max_value(
+                                    first_task_skill_values[0],
+                                    second_task_skill_values[0],
+                                    third_task_skill_values[0],
+                                    fourth_task_skill_values[0],
+                                ),
+                                max_value(
+                                    first_task_skill_values[1],
+                                    second_task_skill_values[1],
+                                    third_task_skill_values[1],
+                                    fourth_task_skill_values[1],
+                                ),
+                                max_value(
+                                    first_task_skill_values[2],
+                                    second_task_skill_values[2],
+                                    third_task_skill_values[2],
+                                    fourth_task_skill_values[2],
+                                ),
+                                max_value(
+                                    first_task_skill_values[3],
+                                    second_task_skill_values[3],
+                                    third_task_skill_values[3],
+                                    fourth_task_skill_values[3],
+                                ),
                             ]
-                            for task_index, value in enumerate(task_skill_values):
-                                if value > task_skill_bests[task_index]:
-                                    task_skill_bests[task_index] = value
-                    skill_score_upper = geometric_mean(task_skill_bests)
+                        else:
+                            task_skill_bests = [*first_task_skill_values]
+                            for member in candidate[1:]:
+                                task_skill_values = (
+                                    task_skill_values_by_person_id[member.id]
+                                )
+                                for task_index, value in enumerate(
+                                    task_skill_values
+                                ):
+                                    if value > task_skill_bests[task_index]:
+                                        task_skill_bests[task_index] = value
+                        skill_score_upper = geometric_mean(task_skill_bests)
 
-                    non_social_upper_bound = (
-                        resolved_weights.alpha * skill_score_upper
-                        + resolved_weights.beta * personality_score
-                        + resolved_weights.gamma * task_preference_score
-                    )
-                    cheap_upper_bound = (
-                        non_social_upper_bound
-                        + resolved_weights.delta
-                    )
-                    cheap_bounded_candidates.append(
-                        (
-                            cheap_upper_bound,
-                            non_social_upper_bound,
-                            index,
-                            candidate,
-                            team_signature,
+                        non_social_upper_bound = (
+                            resolved_weights.alpha * skill_score_upper
+                            + resolved_weights.beta * personality_score
+                            + resolved_weights.gamma * task_preference_score
                         )
+                        cheap_upper_bound = (
+                            non_social_upper_bound
+                            + resolved_weights.delta
+                        )
+                        cheap_bounded_candidates.append(
+                            (
+                                cheap_upper_bound,
+                                non_social_upper_bound,
+                                index,
+                                candidate,
+                                team_signature,
+                            )
+                        )
+
+                    cheap_bounded_candidates.sort(
+                        key=lambda entry: (
+                            entry[0],
+                            -entry[2],
+                        ),
+                        reverse=True,
                     )
+                    compat_greedy_cheap_bounded_candidates = (
+                        cheap_bounded_candidates
+                    )
+                    if (
+                        compat_greedy_cheap_bounded_candidates_cache_key
+                        is not None
+                    ):
+                        _REQUEST_COMPAT_GREEDY_CHEAP_BOUNDED_CANDIDATES[
+                            compat_greedy_cheap_bounded_candidates_cache_key
+                        ] = (
+                            request,
+                            compat_greedy_cheap_bounded_candidates,
+                        )
 
-                cheap_bounded_candidates.sort(
-                    key=lambda entry: (
-                        entry[0],
-                        -entry[2],
-                    ),
-                    reverse=True,
-                )
-
+                assert compat_greedy_cheap_bounded_candidates is not None
                 for (
                     cheap_upper_bound,
                     non_social_upper_bound,
                     _index,
                     candidate,
                     team_signature,
-                ) in cheap_bounded_candidates:
+                ) in compat_greedy_cheap_bounded_candidates:
                     if (
                         best is not None
                         and _objective_component_less(
@@ -1798,7 +1890,12 @@ def greedy_allocations(
                             best_ids = candidate_ids
 
                 if best is None:
-                    best = scored_candidate(next(iter(candidates)))
+                    if compat_greedy_cheap_bounded_candidates:
+                        best = scored_candidate(
+                            compat_greedy_cheap_bounded_candidates[0][3]
+                        )
+                    else:
+                        best = scored_candidate(next(iter(candidates)))
             else:
                 if not request.init_random and pre_scored_candidates:
                     best_candidate_people: tuple[Person, ...] | None = None
