@@ -171,6 +171,23 @@ _REQUEST_FORM_SCORE_CACHES: dict[
     tuple[FormationRequest, dict[ScoreCacheKey, ScoredAllocation]],
 ] = {}
 
+_REQUEST_GREEDY_ALLOCATIONS: dict[
+    tuple[
+        int,
+        tuple[str, ...],
+        Mode,
+        WeightPreset | None,
+        bool,
+        int | None,
+        int,
+    ],
+    tuple[
+        FormationRequest,
+        tuple[ScoredAllocation, ...],
+        tuple[Person, ...],
+    ],
+] = {}
+
 _REQUEST_IMPROVED_ALLOCATIONS: dict[
     tuple[
         int,
@@ -1608,6 +1625,29 @@ def greedy_allocations(
     randomizer: random.Random | None,
     score_cache: dict[ScoreCacheKey, ScoredAllocation],
 ) -> tuple[list[ScoredAllocation], list[Person]]:
+    greedy_cache_key: tuple[
+        int,
+        tuple[str, ...],
+        Mode,
+        WeightPreset | None,
+        bool,
+        int | None,
+        int,
+    ] | None = None
+    if score_team is _ORIGINAL_SCORE_TEAM and not request.init_random:
+        greedy_cache_key = (
+            id(request),
+            tuple(task.id for task in task_order),
+            mode,
+            preset,
+            normalize_weights,
+            max_candidate_teams,
+            shortlist_padding,
+        )
+        cached_greedy = _REQUEST_GREEDY_ALLOCATIONS.get(greedy_cache_key)
+        if cached_greedy is not None and cached_greedy[0] is request:
+            return [*cached_greedy[1]], [*cached_greedy[2]]
+
     remaining_people = list(request.people)
     allocations: list[ScoredAllocation] = []
 
@@ -2046,6 +2086,13 @@ def greedy_allocations(
         remaining_people = [
             person for person in remaining_people if person.id not in chosen_ids
         ]
+
+    if greedy_cache_key is not None:
+        _REQUEST_GREEDY_ALLOCATIONS[greedy_cache_key] = (
+            request,
+            tuple(allocations),
+            tuple(remaining_people),
+        )
 
     return allocations, remaining_people
 
