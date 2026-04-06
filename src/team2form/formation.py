@@ -101,10 +101,8 @@ _REQUEST_COMPAT_SHORTLIST_CHEAP_BOUNDED_CANDIDATES: dict[
         list[
             tuple[
                 float,
-                float,
                 int,
                 tuple[Person, ...],
-                tuple[str, ...],
             ]
         ],
     ],
@@ -124,10 +122,8 @@ _REQUEST_COMPAT_GREEDY_CHEAP_BOUNDED_CANDIDATES: dict[
         list[
             tuple[
                 float,
-                float,
                 int,
                 tuple[Person, ...],
-                tuple[str, ...],
             ]
         ],
     ],
@@ -928,7 +924,7 @@ def _best_scored_shortlist_candidate_with_compat_pruning(
     )
 
     cheap_bounded_candidates: list[
-        tuple[float, float, int, tuple[Person, ...], tuple[str, ...]]
+        tuple[float, int, tuple[Person, ...]]
     ]
     if (
         cached_cheap_bounded_candidates is not None
@@ -1052,10 +1048,6 @@ def _best_scored_shortlist_candidate_with_compat_pruning(
                 + resolved_weights.beta * personality_score
                 + resolved_weights.gamma * task_preference_score
             )
-            cheap_upper_bound = (
-                non_social_upper_bound
-                + resolved_weights.delta
-            )
             social_score_upper = _compat_candidate_social_upper_bound(
                 people=candidate,
                 team_signature=team_signature,
@@ -1068,19 +1060,16 @@ def _best_scored_shortlist_candidate_with_compat_pruning(
             )
             cheap_bounded_candidates.append(
                 (
-                    cheap_upper_bound,
                     exact_upper_bound,
                     index,
                     candidate,
-                    team_signature,
                 )
             )
 
         cheap_bounded_candidates.sort(
             key=lambda entry: (
-                entry[1],
                 entry[0],
-                -entry[2],
+                -entry[1],
             ),
             reverse=True,
         )
@@ -1092,11 +1081,9 @@ def _best_scored_shortlist_candidate_with_compat_pruning(
         )
 
     for (
-        _cheap_upper_bound,
         exact_upper_bound,
         index,
         candidate,
-        _team_signature,
     ) in cheap_bounded_candidates:
         if (
             best is not None
@@ -1645,10 +1632,8 @@ def greedy_allocations(
         compat_greedy_cheap_bounded_candidates: list[
             tuple[
                 float,
-                float,
                 int,
                 tuple[Person, ...],
-                tuple[str, ...],
             ]
         ] | None = None
         compat_greedy_cheap_bounded_candidates_cache_key: tuple[
@@ -1790,10 +1775,8 @@ def greedy_allocations(
                     cheap_bounded_candidates: list[
                         tuple[
                             float,
-                            float,
                             int,
                             tuple[Person, ...],
-                            tuple[str, ...],
                         ]
                     ] = []
                     for index, candidate in enumerate(candidates):
@@ -1901,10 +1884,6 @@ def greedy_allocations(
                             + resolved_weights.beta * personality_score
                             + resolved_weights.gamma * task_preference_score
                         )
-                        cheap_upper_bound = (
-                            non_social_upper_bound
-                            + resolved_weights.delta
-                        )
                         social_score_upper = (
                             _compat_candidate_social_upper_bound(
                                 people=candidate,
@@ -1921,19 +1900,16 @@ def greedy_allocations(
                         )
                         cheap_bounded_candidates.append(
                             (
-                                cheap_upper_bound,
                                 exact_upper_bound,
                                 index,
                                 candidate,
-                                team_signature,
                             )
                         )
 
                     cheap_bounded_candidates.sort(
                         key=lambda entry: (
-                            entry[1],
                             entry[0],
-                            -entry[2],
+                            -entry[1],
                         ),
                         reverse=True,
                     )
@@ -1953,11 +1929,9 @@ def greedy_allocations(
 
                 assert compat_greedy_cheap_bounded_candidates is not None
                 for (
-                    _cheap_upper_bound,
                     exact_upper_bound,
                     _index,
                     candidate,
-                    _team_signature,
                 ) in compat_greedy_cheap_bounded_candidates:
                     if (
                         best is not None
@@ -1990,7 +1964,7 @@ def greedy_allocations(
                 if best is None:
                     if compat_greedy_cheap_bounded_candidates:
                         best = scored_candidate(
-                            compat_greedy_cheap_bounded_candidates[0][3]
+                            compat_greedy_cheap_bounded_candidates[0][2]
                         )
                     else:
                         best = scored_candidate(next(iter(candidates)))
