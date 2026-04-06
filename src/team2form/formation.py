@@ -2619,15 +2619,28 @@ def improve_allocations(
                             left_upper_bound,
                             right_upper_bound,
                         )
-                        if not _objective_better(
-                            (
-                                upper_trial_product,
-                                upper_trial_min,
-                                upper_trial_sum,
-                            ),
-                            current_objective,
+                        if _objective_component_less(
+                            upper_trial_product,
+                            current_product,
                         ):
                             continue
+                        if _objective_component_close(
+                            upper_trial_product,
+                            current_product,
+                        ):
+                            if _objective_component_less(
+                                upper_trial_min,
+                                current_min,
+                            ):
+                                continue
+                            if _objective_component_close(
+                                upper_trial_min,
+                                current_min,
+                            ) and _objective_component_less(
+                                upper_trial_sum,
+                                current_sum,
+                            ):
+                                continue
 
                     rescored_left = cached_score_team(
                         request,
