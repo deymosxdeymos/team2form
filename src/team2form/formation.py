@@ -1056,10 +1056,20 @@ def _best_scored_shortlist_candidate_with_compat_pruning(
                 non_social_upper_bound
                 + resolved_weights.delta
             )
+            social_score_upper = _compat_candidate_social_upper_bound(
+                people=candidate,
+                team_signature=team_signature,
+                social_cache=social_cache,
+                social_preference_presence_cache=social_preference_presence_cache,
+            )
+            exact_upper_bound = (
+                non_social_upper_bound
+                + (resolved_weights.delta * social_score_upper)
+            )
             cheap_bounded_candidates.append(
                 (
                     cheap_upper_bound,
-                    non_social_upper_bound,
+                    exact_upper_bound,
                     index,
                     candidate,
                     team_signature,
@@ -1082,10 +1092,10 @@ def _best_scored_shortlist_candidate_with_compat_pruning(
 
     for (
         cheap_upper_bound,
-        non_social_upper_bound,
+        exact_upper_bound,
         index,
         candidate,
-        team_signature,
+        _team_signature,
     ) in cheap_bounded_candidates:
         if (
             best is not None
@@ -1093,16 +1103,6 @@ def _best_scored_shortlist_candidate_with_compat_pruning(
         ):
             break
 
-        social_score_upper = _compat_candidate_social_upper_bound(
-            people=candidate,
-            team_signature=team_signature,
-            social_cache=social_cache,
-            social_preference_presence_cache=social_preference_presence_cache,
-        )
-        exact_upper_bound = (
-            non_social_upper_bound
-            + (resolved_weights.delta * social_score_upper)
-        )
         if (
             best is not None
             and _objective_component_less(exact_upper_bound, best_quality)
@@ -1881,10 +1881,24 @@ def greedy_allocations(
                             non_social_upper_bound
                             + resolved_weights.delta
                         )
+                        social_score_upper = (
+                            _compat_candidate_social_upper_bound(
+                                people=candidate,
+                                team_signature=team_signature,
+                                social_cache=social_cache,
+                                social_preference_presence_cache=(
+                                    social_preference_presence_cache
+                                ),
+                            )
+                        )
+                        exact_upper_bound = (
+                            non_social_upper_bound
+                            + (resolved_weights.delta * social_score_upper)
+                        )
                         cheap_bounded_candidates.append(
                             (
                                 cheap_upper_bound,
-                                non_social_upper_bound,
+                                exact_upper_bound,
                                 index,
                                 candidate,
                                 team_signature,
@@ -1915,10 +1929,10 @@ def greedy_allocations(
                 assert compat_greedy_cheap_bounded_candidates is not None
                 for (
                     cheap_upper_bound,
-                    non_social_upper_bound,
+                    exact_upper_bound,
                     _index,
                     candidate,
-                    team_signature,
+                    _team_signature,
                 ) in compat_greedy_cheap_bounded_candidates:
                     if (
                         best is not None
@@ -1929,21 +1943,12 @@ def greedy_allocations(
                     ):
                         break
 
-                    social_score_upper = _compat_candidate_social_upper_bound(
-                        people=candidate,
-                        team_signature=team_signature,
-                        social_cache=social_cache,
-                        social_preference_presence_cache=(
-                            social_preference_presence_cache
-                        ),
-                    )
-                    upper_bound = (
-                        non_social_upper_bound
-                        + (resolved_weights.delta * social_score_upper)
-                    )
                     if (
                         best is not None
-                        and _objective_component_less(upper_bound, best_quality)
+                        and _objective_component_less(
+                            exact_upper_bound,
+                            best_quality,
+                        )
                     ):
                         continue
 
