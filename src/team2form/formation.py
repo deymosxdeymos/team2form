@@ -2371,6 +2371,11 @@ def improve_allocations(
             compat_swap_bound_data_by_task_id[task_id] = task_bound_data
             compat_swap_upper_bound_cache_by_task_id.setdefault(task_id, {})
 
+    use_compat_upper_bounds = (
+        compat_bound_resolved_weights is not None
+        and bool(compat_swap_bound_data_by_task_id)
+    )
+
     improved = True
     rounds = 0
     while improved and rounds < swap_rounds:
@@ -2538,10 +2543,7 @@ def improve_allocations(
                             member.id for member in swapped_right
                         )
 
-                    if (
-                        compat_bound_resolved_weights is not None
-                        and compat_swap_bound_data_by_task_id
-                    ):
+                    if use_compat_upper_bounds:
                         (
                             left_task_preferences,
                             left_task_preference_default,
