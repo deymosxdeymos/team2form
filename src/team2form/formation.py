@@ -215,6 +215,11 @@ _REQUEST_TASK_ORIGINAL_ORDER: dict[
     tuple[FormationRequest, dict[str, int]],
 ] = {}
 
+_REQUEST_TASK_ORDER_BY_ORIGINAL_INDICES: dict[
+    tuple[int, Mode],
+    tuple[FormationRequest, tuple[int, ...]],
+] = {}
+
 
 def _request_tasks_by_id(request: FormationRequest) -> dict[str, Task]:
     cache_key = id(request)
@@ -3051,6 +3056,33 @@ def form_teams(
             tuple(task_order),
         )
 
+    task_order_original_indices: tuple[int, ...] | None = None
+    if not request.init_random:
+        cached_task_order_original_indices = (
+            _REQUEST_TASK_ORDER_BY_ORIGINAL_INDICES.get(task_order_cache_key)
+        )
+        if (
+            cached_task_order_original_indices is not None
+            and cached_task_order_original_indices[0] is request
+        ):
+            task_order_original_indices = (
+                cached_task_order_original_indices[1]
+            )
+        else:
+            original_order = _request_task_original_order(request)
+            task_order_original_indices = tuple(
+                sorted(
+                    range(len(task_order)),
+                    key=lambda task_index: (
+                        original_order[task_order[task_index].id]
+                    ),
+                )
+            )
+            _REQUEST_TASK_ORDER_BY_ORIGINAL_INDICES[task_order_cache_key] = (
+                request,
+                task_order_original_indices,
+            )
+
     if request.init_random:
         assert randomizer is not None
         randomizer.shuffle(task_order)
@@ -3098,11 +3130,18 @@ def form_teams(
             score_cache=score_cache,
         )
 
-    original_order = _request_task_original_order(request)
-    ordered_allocations = sorted(
-        allocations,
-        key=lambda allocation: original_order[allocation.task_id],
-    )
+    if task_order_original_indices is None:
+        original_order = _request_task_original_order(request)
+        ordered_allocations = sorted(
+            allocations,
+            key=lambda allocation: original_order[allocation.task_id],
+        )
+    else:
+        ordered_allocations = [
+            allocations[task_index]
+            for task_index in task_order_original_indices
+        ]
+
     teams_payload: list[dict[str, object]] = []
     for allocation in ordered_allocations:
         people_payload: list[dict[str, object]] = []
