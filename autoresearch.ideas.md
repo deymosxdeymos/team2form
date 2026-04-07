@@ -1,16 +1,17 @@
 - Extend the new admissible greedy upper-bound pruning to additional safe paths (e.g. `build_scored_candidates` / exact-prep when `total_combinations <= max_candidate_teams`) while preserving current tie semantics.
 - Generalize the kept COMPAT scored-shortlist cap+1 fast path (`_best_scored_shortlist_candidate_with_compat_pruning`) to larger overshoot cases only if top-k/tie semantics can be proven equivalent.
 - Explore a broader `candidate_combinations()` ranked-selection redesign (algorithmic, not micro-tweaks), since many heap/list/comprehension/key-canonicalization micro-optimizations have consistently regressed.
-- Follow up on the latest kept chain (through `8df9a8e`) by targeting remaining structural swap/cache/output overhead, not branch-only micro-tweaks.
+- Follow up on the latest kept chain (through `0dfd343`) by targeting remaining structural swap/cache/output overhead, not branch-only micro-tweaks.
 - Continue exploiting lazy work patterns in swap improvement (signature-first decisions with deferred tuple/scoring construction), but only where semantic equivalence is straightforward.
+- `_REQUEST_IMPROVED_ALLOCATIONS` key rewrite to allocation object-identity tuples (`tuple(id(allocation)...)`) was inconclusive/noise-prone on first pass; only revisit with strict paired bundles.
 - Investigate behavior-preserving reductions in `_compat_member_task_analysis` / `_compat_member_priority_order` that remove whole classes of work (not extra caching/branching), while keeping exact tie-breaking semantics.
 - Continue request-scoped immutable-data caching on the hottest score path only (task lookup/task preferences/team social-preference presence/resolved weights proved high leverage); avoid extending caches into colder paths unless profiling justifies it.
-- Re-validate commit `8df9a8e` (latest keep chain through explicit-loop output payload assembly, compat upper-bound gate hoist, sentinel-based exact-bound break simplification, consolidated fixed-len swap-signature branching, lazy swapped-team materialization after bound probes, fixed-len swap score-cache direct-hit probes, request-scoped `improve_allocations` memoization, deterministic request-scoped `greedy_allocations` memoization, optional `ScoredAllocation.team_signature` reuse in improve-key construction, request-scoped task original-order cache reuse, cached task-order→original-order permutation indices for output reordering, explicit headcount accumulation-loop guard rewrite, direct typed `team_signature` reuse in improve-cache key construction, cached `assignment_items` reuse for output assembly, branch-specific direct index iteration on the deterministic output path, fixed-size indexed people-payload fill in output assembly, and list-backed greedy/improve cache payloads with `.copy()` warm-hit returns) when host latency returns to a stable band to confirm gains are not regime-specific and not benchmark-regime artifacts.
+- Re-validate commit `0dfd343` (latest keep chain through explicit-loop output payload assembly, compat upper-bound gate hoist, sentinel-based exact-bound break simplification, consolidated fixed-len swap-signature branching, lazy swapped-team materialization after bound probes, fixed-len swap score-cache direct-hit probes, request-scoped `improve_allocations` memoization, deterministic request-scoped `greedy_allocations` memoization, request-scoped task original-order cache reuse, cached task-order→original-order permutation indices for output reordering, explicit headcount accumulation-loop guard rewrite, non-optional `ScoredAllocation.team_signature` with post-init fallback, runtime cast removal in improve-key construction, cached `assignment_items` reuse for output assembly, branch-specific direct index iteration on the deterministic output path, fixed-size indexed people-payload fill in output assembly, and list-backed greedy/improve cache payloads with `.copy()` warm-hit returns) when host latency returns to a stable band to confirm gains are not regime-specific and not benchmark-regime artifacts.
 - Use immediate paired A/B validation (candidate run followed by no-code baseline, or vice versa) for marginal deltas while host variance remains high.
 - Validate request-reuse-dependent wins (especially `improve_allocations`/`greedy_allocations` memoization) with occasional fresh-request benchmark variants to avoid over-indexing on warm-object reuse.
-- Latest fresh-request diagnostics (same synthetic workload, rebuild `FormationRequest` each call) remain ~44–45ms median (best ~43.8ms) despite warm-cache keeps; track this gap explicitly to avoid mistaking reuse-specific gains for general algorithmic speedups.
+- Latest fresh-request diagnostics (same synthetic workload, rebuild `FormationRequest` each call) currently show a much slower/volatile band (~49–63ms samples; ~55.6ms median, ~49.1ms best), despite warm-cache keeps; track this gap explicitly to avoid mistaking reuse-specific gains for general algorithmic speedups.
 - Audit lifecycle/memory behavior of the new `_REQUEST_IMPROVED_ALLOCATIONS` cache in long-lived processes; consider bounded/weakref strategies if growth appears unbounded.
-- Host regime continues to shift across wide bands; in the latest warm-cache regime, baseline samples have ranged roughly ~0.10–0.16ms (with occasional higher spikes). Treat micro deltas cautiously and keep strict paired/no-code confirmations.
+- Host regime continues to shift across wide bands; in the latest warm-cache regime, baseline samples have ranged roughly ~0.12–0.21ms (with occasional higher spikes). Treat micro deltas cautiously and keep strict paired/no-code confirmations.
 
 Pruned as stale/tried (do not retry without a materially different approach):
 - Per-shortlist or global caching layers for explicit social-preference pair checks.
@@ -119,6 +120,7 @@ Pruned as stale/tried (do not retry without a materially different approach):
 - Sentinel-only incumbent update rewrite in cap+1 / greedy exact-bound loops (drop `best is None` in quality-update condition, rely solely on `best_quality=-inf`) — regressed.
 - Task-order cache reuse via shared mutable list payload (avoid per-call copy when `init_random=false`) — regressed.
 - Task-order warm-cache copy rewrite (`[*cached_task_order[1]]` -> `list(cached_task_order[1])`) was neutral/regressed.
+- List-backed `_REQUEST_TASK_ORDER_BY_HARDNESS` cache payload (`list` + `.copy()`) was also neutral/regressed vs current tuple-backed representation.
 - Local helper binding in `improve_allocations` (`objective_component_less/close`, `cached_score`) — neutral/regressed.
 - Ternary clamp rewrite replacing `max(value, 1e-12)` in allocation/swap objective product paths — regressed.
 - Manual branch rewrite of swap upper-bound triple-min (`min(other_min, left_upper, right_upper)`) — regressed.
@@ -154,13 +156,13 @@ Pruned as stale/tried (do not retry without a materially different approach):
 - Full output `model_construct` flow (`AssignedPerson.model_construct` + `TeamResult.model_construct` + `TeamsResponse.model_construct`) was re-tested in warm regime and regressed strongly.
 - `ScoredAllocation`-level precomputed person payload tuples reused in output assembly (with fallback) regressed after type-safe retry.
 - Branching output assembly on `score_team is _ORIGINAL_SCORE_TEAM` and iterating cached `assignment_items` without per-allocation fallback crashed tests (manual/monkeypatched `ScoredAllocation` may leave `assignment_items=None`).
-- `ScoredAllocation.__post_init__` auto-population of `assignment_items`/`team_signature` plus fallback removal in output loop regressed (constructor normalization overhead > saved branch checks).
+- `ScoredAllocation.__post_init__` auto-population of `assignment_items`/`team_signature` plus fallback removal in output loop regressed (constructor normalization overhead > saved branch checks), including latest retry after `0dfd343` made `team_signature` non-optional.
 - Request-scoped cache for per-allocation final people payload lists in output construction — regressed.
 - Tuple-based final payload containers (teams/people tuples) for `TeamsResponse.model_validate` — regressed.
 - `cached_score_team` dual-key raw-order fast path (probe/store raw `(task_id, raw_signature)` aliases before canonical key) — regressed.
 - `cached_score_team` cache-hit lookup rewrite from `.get(...)` to `try/except KeyError` — regressed.
 - Swap upper-bound cache lookup rewrite from `.get(...)` to `try/except KeyError` in `improve_allocations` — regressed.
-- Current fixed-len swap-signature consolidation (`47de6e8`) + lazy swapped-team materialization (`586180e`) + fixed-len direct swap score-cache probes (`72f7d4e`) + request-scoped `improve_allocations` memoization (`05db4d2`) + deterministic request-scoped `greedy_allocations` memoization (`5d84b90`) + `ScoredAllocation.team_signature` improve-key reuse (`ce00bb2`) + request-scoped task original-order cache reuse (`7361b06`) + cached task-order→original-order permutation indices (`77f69d2`) + explicit headcount accumulation-loop guard rewrite (`4c2992c`) + direct typed `team_signature` reuse in improve-key construction (`3d82f97`) + cached `assignment_items` reuse for output assembly (`15ddcb5`) + branch-specific direct index iteration on deterministic output path (`bc7b580`) + fixed-size indexed people-payload fill (`a7d5a8f`) + list-backed greedy/improve cache payloads with `.copy()` warm-hit returns (`8df9a8e`) is the preferred direction; avoid reverting to eager swapped tuple construction or unconditional `cached_score_team` calls before cache probes.
+- Current fixed-len swap-signature consolidation (`47de6e8`) + lazy swapped-team materialization (`586180e`) + fixed-len direct swap score-cache probes (`72f7d4e`) + request-scoped `improve_allocations` memoization (`05db4d2`) + deterministic request-scoped `greedy_allocations` memoization (`5d84b90`) + request-scoped task original-order cache reuse (`7361b06`) + cached task-order→original-order permutation indices (`77f69d2`) + explicit headcount accumulation-loop guard rewrite (`4c2992c`) + non-optional `ScoredAllocation.team_signature` with post-init fallback and cast-free improve-key reuse (`0dfd343`) + cached `assignment_items` reuse for output assembly (`15ddcb5`) + branch-specific direct index iteration on deterministic output path (`bc7b580`) + fixed-size indexed people-payload fill (`a7d5a8f`) + list-backed greedy/improve cache payloads with `.copy()` warm-hit returns (`8df9a8e`) is the preferred direction; avoid reverting to eager swapped tuple construction or unconditional `cached_score_team` calls before cache probes.
 - Fixed-len swap miss-path helper (`cached_score_team_for_signature` using precomputed canonical signatures to bypass `cached_score_team` canonicalization on misses) — regressed; keep the direct-hit-only fast path from `72f7d4e`.
 - Fixed-len swap score-cache canonicalization rewrite using precomputed per-index sorted remainder triples + insertion branches — regressed; keep the existing 4-id compare/swap canonicalization network.
 - Greedy <=cap COMPAT exact-stage cache payload expansion to store canonical score signatures (and bypass `cached_score_team` canonicalization via direct cache probe + `score_team`) — regressed.
@@ -173,14 +175,19 @@ Pruned as stale/tried (do not retry without a materially different approach):
 - Request-scoped teams-payload reuse cache in `form_teams` (keyed by ordered allocation identities, reuse payload dicts before `TeamsResponse.model_validate`) was inconclusive/near-noise and adds mutable-output cache risk.
 - Config-keyed request-scoped `teams_payload` reuse cache (without allocation-id keying) was also inconclusive/near-noise and adds mutable-output cache risk.
 - Module-level alias for `TeamsResponse.model_validate` was re-tested in the warm-path regime and regressed sharply; keep direct classmethod call.
+- Local `response_payload` variable before `TeamsResponse.model_validate(...)` (instead of inline dict literal) regressed.
 - Task-order cache tuple-reuse without per-call list copy was re-tested in the warm-path regime and still regressed.
-- Request-scoped cache for `capped_candidate_search_is_exact` was inconclusive/near-noise in the current regime.
+- Request-scoped cache for `capped_candidate_search_is_exact` remains inconclusive/regressive on latest retry.
 - Request-scoped ordered-allocation cache for final sort (`(request id, allocation id tuple) -> ordered allocations`) was also inconclusive/near-noise and adds object-identity coupling.
 - Deterministic full-response cache using `TeamsResponse.model_copy(deep=True)` on hits regressed heavily; deep copy cost dominates.
 - Direct `TeamsResponse(teams=teams_payload)` constructor with raw dict payloads failed `ty` (`teams` expects `list[TeamResult]`) and was slower.
 - Output payload nested-comprehension rewrite (replace explicit append loops) regressed in warm-path regime, including latest retry on top of `assignment_items` cache baseline.
+- Direct A/B reversion of fixed-size indexed people-payload fill (`a7d5a8f`) back to append loops was slower in latest sample.
 - Branchless assignment-items fallback (`assignment_items or assignments.items()`) in output loops regressed; explicit `is None` check remains faster.
+- `assignment_items is None` fallback rewrite using direct `assignments.items()` view (instead of tuple materialization) was neutral/regressed.
 - Deterministic output fast-path guard (`score_team is _ORIGINAL_SCORE_TEAM and all(assignment_items is not None)`) with casted no-fallback branch was neutral/regressed.
+- Deterministic output first-allocation-sentinel fast-path variant (`allocations[0].assignment_items is not None`) is error-prone (initial retry crashed on missing cast import) and regressed when fixed.
+- Deterministic output specialization gated by (`score_team is _ORIGINAL_SCORE_TEAM and swap_rounds > 0`) with assert-non-None `assignment_items` also regressed.
 - Inverting final output branch to make deterministic path the primary `if` (`task_order_original_indices is not None`) regressed.
 - Indexed payload preallocation variant using `[None] * len(...)` + cast (instead of placeholder-dict list) regressed.
 - Top-level `teams_payload` fixed-size indexed fill (preallocate + assign by index) regressed; keep append-based team payload list construction.
@@ -190,21 +197,32 @@ Pruned as stale/tried (do not retry without a materially different approach):
 - Precomputing improve-cache key fragments by changing `greedy_allocations` return arity broke tests that unpack exactly two values; preserve return contract.
 - Side-channel variant that preserved `greedy_allocations` return contract (store key fragments in greedy cache and plumb optional precomputed args into `improve_allocations`) was neutral/inconclusive.
 - Direct form-level greedy-cache fast path (skip exact check/`greedy_allocations` call on deterministic cache hit) attempted alongside greedy payload expansion but failed `ty` due cache-type mismatch; only retry with fully synchronized cache typing if signal justifies.
-- `greedy_allocations` optional `task_order_ids` precompute (avoid rebuilding task-id tuple for cache key) was neutral/inconclusive.
+- `greedy_allocations` optional `task_order_ids` precompute (avoid rebuilding task-id tuple for cache key) remains neutral/regressive across retries, including task-order-cache payload expansion that stored/reused `task_order_ids`.
 - Deterministic form-level shortcut that reads `_REQUEST_GREEDY_ALLOCATIONS` directly to skip exact-check/`greedy_allocations` call on cache hits remains neutral/regressive across retries (including precomputed-key and simple direct-probe variants).
 - Deterministic form-level shortcut that reads `_REQUEST_IMPROVED_ALLOCATIONS` directly to skip calling `improve_allocations` on cache hits remains neutral/regressive across retries.
 - `form_teams` `request_id = id(request)` hoist for cache-key assembly was regressive/near-noise.
 - Local `tasks = request.tasks` alias rewrite in `form_teams` was regressive/near-noise.
+- Local `init_random = request.init_random` alias rewrite in `form_teams` was regressive/near-noise.
+- Lazy `score_cache` local allocation rewrite in `form_teams` (remove unconditional `{}`) regressed.
 - Hoisted `people_count = len(request.people)` micro-variant in headcount guard was regressive/near-noise.
+- Request-scoped cached headcount helper (`_request_total_requested_seats`) replacing local seat-accumulation loop regressed.
 - `improve_allocations` empty-`unused_people` branch fast path (`() if no reserves else tuple(...)`) regressed.
+- Greedy-cache warm-hit empty-reserve branch (`copy + []` instead of copying empty reserve list) regressed.
 - `improve_allocations` memo-key signature staging via temporary list comprehension (`allocation_signatures`) was neutral/regressed.
-- Removing runtime `cast(...)` in improve-cache key by using raw optional `allocation.team_signature` failed `ty` (optional-signature key typing).
+- `improve_allocations` memo-key len-4 unrolled signature tuple specialization was also neutral/regressed.
+- Precomputed `ScoredAllocation.improve_key_signature` field for improve-cache key assembly regressed (retested; still strongly negative in current regime).
+- `greedy_allocations` cache-key len-4 task-id unrolled specialization also regressed.
+- Removing runtime `cast(...)` in improve-cache key by using raw optional `allocation.team_signature` failed `ty` (optional-signature key typing); superseded by kept non-optional `team_signature` normalization in `0dfd343`.
+- Direct A/B reversion of `0dfd343` back to optional `team_signature` + runtime cast in improve-key construction was slower in latest sample.
+- Lazy team-signature accessor variant (`ScoredAllocation.improve_cache_signature()` with optional `team_signature`) also regressed vs current `0dfd343` approach.
 - Warm-cache return copy rewrite (`[*tuple]` -> `list(tuple)`) in `greedy_allocations`/`improve_allocations` regressed.
 - On list-backed cache payloads (`8df9a8e`), return-slice copies (`[:]`) regressed vs `.copy()`.
 - On list-backed cache payloads (`8df9a8e`), unpack-list copies (`[*cached_list]`) were also neutral/regressed vs `.copy()`.
+- Removing warm-hit copies entirely (return cached list objects directly) regressed and increases cache-aliasing risk.
 - Direct A/B reversion of `8df9a8e` back to tuple-backed greedy/improve cache payloads was slower in latest sample; keep list-backed `.copy()` strategy pending further paired checks.
 - Partial split reversion (list-backed greedy cache + tuple-backed improve cache) was also slower; keep both caches on list-backed `.copy()` strategy.
-- Optional `copy_cached_results=False` helper-flag approach (skip helper-level cache-hit copies only for `form_teams`) was neutral/regressive; keep simpler always-copy helper contract.
+- Optional `copy_cached_results=False` helper-flag approach (including selective `swap_rounds>0` greedy no-copy variant) was neutral/regressive; keep simpler always-copy helper contract.
+- Directly removing warm-hit `.copy()` calls from request-scoped greedy/improve caches (return cached lists by reference) was also not a clear win and increases mutation risk.
 - Inlining `validate_max_candidate_teams` directly inside `form_teams` was regressive/near-noise.
 - Exactness quick-gate shortcut in `form_teams` (first-task `math.comb(...) > cap` check before `capped_candidate_search_is_exact`) regressed.
 - `capped_candidate_search_is_exact` arithmetic fast-path rewrite for small `team_size` values (`k<=4`) regressed vs direct `math.comb`.
