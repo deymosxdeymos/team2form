@@ -31,6 +31,7 @@ class ScoredAllocation:
     people: tuple[Person, ...]
     quality: float
     assignments: dict[str, list[str]]
+    assignment_items: tuple[tuple[str, list[str]], ...] | None = None
     team_signature: tuple[str, ...] | None = None
 
 
@@ -1374,6 +1375,7 @@ def score_team(
         people=people,
         quality=components.quality,
         assignments=components.assignments,
+        assignment_items=tuple(components.assignments.items()),
         team_signature=team_signature,
     )
 
@@ -3144,8 +3146,12 @@ def form_teams(
 
     teams_payload: list[dict[str, object]] = []
     for allocation in ordered_allocations:
+        assignment_items = allocation.assignment_items
+        if assignment_items is None:
+            assignment_items = tuple(allocation.assignments.items())
+
         people_payload: list[dict[str, object]] = []
-        for person_id, skill_ids in allocation.assignments.items():
+        for person_id, skill_ids in assignment_items:
             people_payload.append(
                 {
                     'id': person_id,
