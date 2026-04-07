@@ -3007,7 +3007,7 @@ def form_teams(
     seed: int | None = None,
 ) -> TeamsResponse:
     validate_max_candidate_teams(max_candidate_teams)
-    if request.total_requested_seats > len(request.people):
+    if sum(task.team_size for task in request.tasks) > len(request.people):
         raise TeamFormationError(
             'Cannot form teams with the provided data: insufficient headcount.'
         )
