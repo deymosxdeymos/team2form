@@ -7,7 +7,7 @@ import random
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from functools import cache
-from typing import overload
+from typing import cast, overload
 
 from .models import FormationRequest, Person, Task, TeamsResponse
 from .modes import Mode, WeightPreset
@@ -2341,10 +2341,7 @@ def improve_allocations(
             tuple(
                 (
                     allocation.task_id,
-                    (
-                        allocation.team_signature
-                        or tuple(member.id for member in allocation.people)
-                    ),
+                    cast(tuple[str, ...], allocation.team_signature),
                 )
                 for allocation in allocations
             ),
