@@ -3134,18 +3134,18 @@ def form_teams(
 
     if task_order_original_indices is None:
         original_order = _request_task_original_order(request)
-        ordered_allocations = sorted(
+        ordered_allocation_iter: Iterable[ScoredAllocation] = sorted(
             allocations,
             key=lambda allocation: original_order[allocation.task_id],
         )
     else:
-        ordered_allocations = [
+        ordered_allocation_iter = (
             allocations[task_index]
             for task_index in task_order_original_indices
-        ]
+        )
 
     teams_payload: list[dict[str, object]] = []
-    for allocation in ordered_allocations:
+    for allocation in ordered_allocation_iter:
         assignment_items = allocation.assignment_items
         if assignment_items is None:
             assignment_items = tuple(allocation.assignments.items())
