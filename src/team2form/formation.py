@@ -185,8 +185,8 @@ _REQUEST_GREEDY_ALLOCATIONS: dict[
     ],
     tuple[
         FormationRequest,
-        tuple[ScoredAllocation, ...],
-        tuple[Person, ...],
+        list[ScoredAllocation],
+        list[Person],
     ],
 ] = {}
 
@@ -202,7 +202,7 @@ _REQUEST_IMPROVED_ALLOCATIONS: dict[
     ],
     tuple[
         FormationRequest,
-        tuple[ScoredAllocation, ...],
+        list[ScoredAllocation],
     ],
 ] = {}
 
@@ -1675,7 +1675,7 @@ def greedy_allocations(
         )
         cached_greedy = _REQUEST_GREEDY_ALLOCATIONS.get(greedy_cache_key)
         if cached_greedy is not None and cached_greedy[0] is request:
-            return [*cached_greedy[1]], [*cached_greedy[2]]
+            return cached_greedy[1].copy(), cached_greedy[2].copy()
 
     remaining_people = list(request.people)
     allocations: list[ScoredAllocation] = []
@@ -2119,8 +2119,8 @@ def greedy_allocations(
     if greedy_cache_key is not None:
         _REQUEST_GREEDY_ALLOCATIONS[greedy_cache_key] = (
             request,
-            tuple(allocations),
-            tuple(remaining_people),
+            allocations.copy(),
+            remaining_people.copy(),
         )
 
     return allocations, remaining_people
@@ -2360,7 +2360,7 @@ def improve_allocations(
             cached_improved_allocations is not None
             and cached_improved_allocations[0] is request
         ):
-            return [*cached_improved_allocations[1]]
+            return cached_improved_allocations[1].copy()
 
     compat_swap_bound_data_by_task_id: dict[
         str,
@@ -2988,7 +2988,7 @@ def improve_allocations(
     if improve_cache_key is not None:
         _REQUEST_IMPROVED_ALLOCATIONS[improve_cache_key] = (
             request,
-            tuple(allocations),
+            allocations.copy(),
         )
 
     return allocations
