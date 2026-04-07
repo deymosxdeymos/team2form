@@ -1670,9 +1670,7 @@ def greedy_allocations(
         int,
     ] | None = None
     if score_team is _ORIGINAL_SCORE_TEAM and not request.init_random:
-        task_order_ids_list: list[str] = []
-        for task in task_order:
-            task_order_ids_list.append(task.id)
+        task_order_ids_list = [task.id for task in task_order]
 
         greedy_cache_key = (
             id(request),
@@ -2348,18 +2346,14 @@ def improve_allocations(
         int,
     ] | None = None
     if score_team is _ORIGINAL_SCORE_TEAM:
-        allocation_signature_list: list[tuple[str, tuple[str, ...]]] = []
-        for allocation in allocations:
-            allocation_signature_list.append(
-                (
-                    allocation.task_id,
-                    allocation.team_signature,
-                )
+        allocation_signature_list = [
+            (
+                allocation.task_id,
+                allocation.team_signature,
             )
-
-        unused_people_ids_list: list[str] = []
-        for person in unused_people:
-            unused_people_ids_list.append(person.id)
+            for allocation in allocations
+        ]
+        unused_people_ids_list = [person.id for person in unused_people]
 
         improve_cache_key = (
             id(request),
