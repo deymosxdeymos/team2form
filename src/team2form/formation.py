@@ -3144,14 +3144,14 @@ def form_teams(
             if assignment_items is None:
                 assignment_items = tuple(allocation.assignments.items())
 
-            people_payload: list[dict[str, object]] = []
-            for person_id, skill_ids in assignment_items:
-                people_payload.append(
-                    {
-                        'id': person_id,
-                        'skillIds': skill_ids,
-                    }
-                )
+            people_payload: list[dict[str, object]] = [
+                {} for _ in range(len(assignment_items))
+            ]
+            for index, (person_id, skill_ids) in enumerate(assignment_items):
+                people_payload[index] = {
+                    'id': person_id,
+                    'skillIds': skill_ids,
+                }
             teams_payload.append(
                 {
                     'taskId': allocation.task_id,
@@ -3166,14 +3166,14 @@ def form_teams(
             if assignment_items is None:
                 assignment_items = tuple(allocation.assignments.items())
 
-            people_payload: list[dict[str, object]] = []
-            for person_id, skill_ids in assignment_items:
-                people_payload.append(
-                    {
-                        'id': person_id,
-                        'skillIds': skill_ids,
-                    }
-                )
+            people_payload: list[dict[str, object]] = [
+                {} for _ in range(len(assignment_items))
+            ]
+            for index, (person_id, skill_ids) in enumerate(assignment_items):
+                people_payload[index] = {
+                    'id': person_id,
+                    'skillIds': skill_ids,
+                }
             teams_payload.append(
                 {
                     'taskId': allocation.task_id,
