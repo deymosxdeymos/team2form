@@ -3132,38 +3132,54 @@ def form_teams(
             score_cache=score_cache,
         )
 
+    teams_payload: list[dict[str, object]] = []
     if task_order_original_indices is None:
         original_order = _request_task_original_order(request)
-        ordered_allocation_iter: Iterable[ScoredAllocation] = sorted(
+        ordered_allocations = sorted(
             allocations,
             key=lambda allocation: original_order[allocation.task_id],
         )
-    else:
-        ordered_allocation_iter = (
-            allocations[task_index]
-            for task_index in task_order_original_indices
-        )
+        for allocation in ordered_allocations:
+            assignment_items = allocation.assignment_items
+            if assignment_items is None:
+                assignment_items = tuple(allocation.assignments.items())
 
-    teams_payload: list[dict[str, object]] = []
-    for allocation in ordered_allocation_iter:
-        assignment_items = allocation.assignment_items
-        if assignment_items is None:
-            assignment_items = tuple(allocation.assignments.items())
-
-        people_payload: list[dict[str, object]] = []
-        for person_id, skill_ids in assignment_items:
-            people_payload.append(
+            people_payload: list[dict[str, object]] = []
+            for person_id, skill_ids in assignment_items:
+                people_payload.append(
+                    {
+                        'id': person_id,
+                        'skillIds': skill_ids,
+                    }
+                )
+            teams_payload.append(
                 {
-                    'id': person_id,
-                    'skillIds': skill_ids,
+                    'taskId': allocation.task_id,
+                    'people': people_payload,
+                    'quality': allocation.quality,
                 }
             )
-        teams_payload.append(
-            {
-                'taskId': allocation.task_id,
-                'people': people_payload,
-                'quality': allocation.quality,
-            }
-        )
+    else:
+        for task_index in task_order_original_indices:
+            allocation = allocations[task_index]
+            assignment_items = allocation.assignment_items
+            if assignment_items is None:
+                assignment_items = tuple(allocation.assignments.items())
+
+            people_payload: list[dict[str, object]] = []
+            for person_id, skill_ids in assignment_items:
+                people_payload.append(
+                    {
+                        'id': person_id,
+                        'skillIds': skill_ids,
+                    }
+                )
+            teams_payload.append(
+                {
+                    'taskId': allocation.task_id,
+                    'people': people_payload,
+                    'quality': allocation.quality,
+                }
+            )
 
     return TeamsResponse.model_validate({'teams': teams_payload})
