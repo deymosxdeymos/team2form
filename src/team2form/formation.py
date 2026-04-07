@@ -7,7 +7,7 @@ import random
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from functools import cache
-from typing import cast, overload
+from typing import overload
 
 from .models import FormationRequest, Person, Task, TeamsResponse
 from .modes import Mode, WeightPreset
@@ -32,7 +32,13 @@ class ScoredAllocation:
     quality: float
     assignments: dict[str, list[str]]
     assignment_items: tuple[tuple[str, list[str]], ...] | None = None
-    team_signature: tuple[str, ...] | None = None
+    team_signature: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not self.team_signature:
+            self.team_signature = tuple(
+                sorted(member.id for member in self.people)
+            )
 
 
 class TeamFormationError(ValueError):
@@ -2343,7 +2349,7 @@ def improve_allocations(
             tuple(
                 (
                     allocation.task_id,
-                    cast(tuple[str, ...], allocation.team_signature),
+                    allocation.team_signature,
                 )
                 for allocation in allocations
             ),
