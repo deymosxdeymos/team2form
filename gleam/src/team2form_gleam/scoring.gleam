@@ -572,6 +572,8 @@ fn assign_task_skills_unique(
     list.index_map(task_skills, fn(task_skill, index) { #(index, task_skill) })
   let member_by_index = dict.from_list(indexed_members)
   let task_skill_by_index = dict.from_list(indexed_task_skills)
+  let member_count = list.length(team)
+  let task_count = list.length(task_skills)
   let score_matrix =
     list.fold(indexed_members, dict.new(), fn(found_matrix, member_entry) {
       let #(member_index, member) = member_entry
@@ -585,12 +587,11 @@ fn assign_task_skills_unique(
             mode: mode,
             similarity_index: similarity_index,
           )
+        let score_key = unique_score_key(member_index, task_index, task_count)
 
-        dict.insert(found_inner, #(member_index, task_index), score)
+        dict.insert(found_inner, score_key, score)
       })
     })
-  let member_count = list.length(team)
-  let task_count = list.length(task_skills)
   let #(_best_state, memo) =
     unique_best_state(
       member_index: 0,
@@ -628,7 +629,8 @@ fn assign_task_skills_unique(
   let score_by_member =
     list.fold(assignment_pairs, dict.new(), fn(found, pair) {
       let #(member_index, task_index) = pair
-      let score = dict_get_or_pair_float(score_matrix, #(member_index, task_index), 0.0)
+      let score_key = unique_score_key(member_index, task_index, task_count)
+      let score = dict_get_or_int_float(score_matrix, score_key, 0.0)
       dict.insert(found, member_index, score)
     })
   let member_scores =
@@ -645,14 +647,15 @@ fn unique_best_state(
   member_count member_count: Int,
   used_mask used_mask: Int,
   task_count task_count: Int,
-  score_matrix score_matrix: dict.Dict(#(Int, Int), Float),
-  memo memo: dict.Dict(#(Int, Int), UniqueState),
-) -> #(UniqueState, dict.Dict(#(Int, Int), UniqueState)) {
+  score_matrix score_matrix: dict.Dict(Int, Float),
+  memo memo: dict.Dict(Int, UniqueState),
+) -> #(UniqueState, dict.Dict(Int, UniqueState)) {
   case member_index == member_count {
     True -> #(UniqueState(score: 0.0, choice: -1), memo)
 
-    False ->
-      case dict.get(memo, #(member_index, used_mask)) {
+    False -> {
+      let memo_key = unique_memo_key(member_index, used_mask, member_count)
+      case dict.get(memo, memo_key) {
         Ok(cached) -> #(cached, memo)
 
         Error(Nil) -> {
@@ -672,9 +675,9 @@ fn unique_best_state(
 
                   False -> {
                     let score =
-                      dict_get_or_pair_float(
+                      dict_get_or_int_float(
                         score_matrix,
-                        #(member_index, task_index),
+                        unique_score_key(member_index, task_index, task_count),
                         0.0,
                       )
 
@@ -704,11 +707,12 @@ fn unique_best_state(
               },
             )
           let memo_final =
-            dict.insert(memo_after, #(member_index, used_mask), best_state)
+            dict.insert(memo_after, memo_key, best_state)
 
           #(best_state, memo_final)
         }
       }
+    }
   }
 }
 
@@ -717,14 +721,17 @@ fn unique_assignments_from_choices(
   member_count member_count: Int,
   used_mask used_mask: Int,
   task_count task_count: Int,
-  memo memo: dict.Dict(#(Int, Int), UniqueState),
+  memo memo: dict.Dict(Int, UniqueState),
 ) -> List(#(Int, Int)) {
   case member_index == member_count {
     True -> []
 
     False -> {
       let state =
-        unique_state_from_memo(memo, #(member_index, used_mask))
+        unique_state_from_memo(
+          memo,
+          unique_memo_key(member_index, used_mask, member_count),
+        )
 
       case state.choice < 0 || state.choice >= task_count {
         True -> []
@@ -748,8 +755,8 @@ fn unique_assignments_from_choices(
 }
 
 fn unique_state_from_memo(
-  memo: dict.Dict(#(Int, Int), UniqueState),
-  key: #(Int, Int),
+  memo: dict.Dict(Int, UniqueState),
+  key: Int,
 ) -> UniqueState {
   case dict.get(memo, key) {
     Ok(state) -> state
@@ -1259,15 +1266,12 @@ fn dict_get_or_pair(
   }
 }
 
-fn dict_get_or_pair_float(
-  mapping: dict.Dict(#(Int, Int), Float),
-  key: #(Int, Int),
-  fallback: Float,
-) -> Float {
-  case dict.get(mapping, key) {
-    Ok(value) -> value
-    Error(Nil) -> fallback
-  }
+fn unique_score_key(member_index: Int, task_index: Int, task_count: Int) -> Int {
+  member_index * task_count + task_index
+}
+
+fn unique_memo_key(member_index: Int, used_mask: Int, member_count: Int) -> Int {
+  used_mask * member_count + member_index
 }
 
 fn dict_get_or_int_float(
