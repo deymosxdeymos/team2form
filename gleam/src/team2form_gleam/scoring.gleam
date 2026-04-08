@@ -4,7 +4,6 @@ import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/set
-import gleam/string
 import team2form_gleam/math
 import team2form_gleam/models.{
   AssignedPerson,
@@ -1236,11 +1235,6 @@ pub fn assigned_people_from_assignments(
 ) -> List(AssignedPerson) {
   assignments
   |> dict.to_list
-  |> list.sort(fn(left, right) {
-    let #(left_id, _) = left
-    let #(right_id, _) = right
-    string.compare(left_id, right_id)
-  })
   |> list.map(fn(entry) {
     let #(person_id, skill_ids) = entry
     AssignedPerson(id: person_id, skill_ids: skill_ids)

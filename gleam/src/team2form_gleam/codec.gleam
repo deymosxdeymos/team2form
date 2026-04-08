@@ -301,11 +301,6 @@ fn encode_string_list(values: List(String)) -> json.Json {
 fn encode_assignments(assignments: dict.Dict(String, List(String))) -> json.Json {
   assignments
   |> dict.to_list
-  |> list.sort(fn(left, right) {
-    let #(left_id, _) = left
-    let #(right_id, _) = right
-    string.compare(left_id, right_id)
-  })
   |> list.map(fn(entry) {
     let #(person_id, skill_ids) = entry
     #(person_id, encode_string_list(skill_ids))
@@ -324,11 +319,6 @@ pub fn encode_quality_breakdown(payload: models.QualityBreakdown) -> String {
       "weights",
       payload.weights
       |> dict.to_list
-      |> list.sort(fn(left, right) {
-        let #(left_id, _) = left
-        let #(right_id, _) = right
-        string.compare(left_id, right_id)
-      })
       |> list.map(fn(entry) {
         let #(name, value) = entry
         #(name, json.float(value))
