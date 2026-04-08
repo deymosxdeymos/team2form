@@ -517,8 +517,14 @@ pub fn assign_task_skills(
     _, [] -> AssignmentResult(assignments: dict.new(), skill_score: 0.0)
 
     _, _ -> {
-      let similarity_index = similarity_lookup(similarities)
-      let equal_partition = list.length(task_skills) == list.length(team)
+      let similarity_index =
+        case mode {
+          Compat -> dict.new()
+          Paper -> similarity_lookup(similarities)
+        }
+      let task_count = list.length(task_skills)
+      let team_count = list.length(team)
+      let equal_partition = task_count == team_count
       case equal_partition {
         True ->
           assign_task_skills_unique(
@@ -529,7 +535,7 @@ pub fn assign_task_skills(
           )
 
         False ->
-          case mode == Compat && list.length(team) > list.length(task_skills) {
+          case mode == Compat && team_count > task_count {
             True ->
               assign_task_skills_compat_overfull(
                 task_skills,
@@ -542,8 +548,8 @@ pub fn assign_task_skills(
                 list.map(team, fn(member) {
                   MemberAssignmentState(member: member, assigned: [])
                 })
-              let max_per_member = ceil_div(list.length(task_skills), list.length(team))
-              let require_all_members = list.length(task_skills) >= list.length(team)
+              let max_per_member = ceil_div(task_count, team_count)
+              let require_all_members = task_count >= team_count
 
               assign_search(
                 remaining_skills: task_skills,

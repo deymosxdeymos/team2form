@@ -1,0 +1,1 @@
+- Revisit replacing `QualityBreakdown.weights` dict with a typed `Weights` record and direct fixed-field JSON encoding (`alpha/beta/gamma/delta`). One run improved `quality_ratio` (to ~3.93) but regressed combined metric due form variance; could be worthwhile when paired with formation-loop optimizations and confirmed over repeated runs.
