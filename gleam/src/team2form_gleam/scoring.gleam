@@ -54,6 +54,10 @@ type MemberAssignmentState {
   MemberAssignmentState(member: Person, assigned: List(TaskSkill))
 }
 
+type UniqueState {
+  UniqueState(score: Float, choice: Int)
+}
+
 pub fn geometric_mean(values: List(Float)) -> Float {
   case values {
     [] -> 0.0
@@ -515,33 +519,242 @@ pub fn assign_task_skills(
 
     _, _ -> {
       let similarity_index = similarity_lookup(similarities)
-      case mode == Compat && list.length(team) > list.length(task_skills) {
+      let equal_partition = list.length(task_skills) == list.length(team)
+      case equal_partition {
         True ->
-          assign_task_skills_compat_overfull(
+          assign_task_skills_unique(
             task_skills,
             team,
-            similarity_index: similarity_index,
-          )
-
-        False -> {
-          let states =
-            list.map(team, fn(member) {
-              MemberAssignmentState(member: member, assigned: [])
-            })
-          let max_per_member = ceil_div(list.length(task_skills), list.length(team))
-          let require_all_members = list.length(task_skills) >= list.length(team)
-
-          assign_search(
-            remaining_skills: task_skills,
-            states: states,
-            max_per_member: max_per_member,
-            require_all_members: require_all_members,
             mode: mode,
             similarity_index: similarity_index,
           )
+
+        False ->
+          case mode == Compat && list.length(team) > list.length(task_skills) {
+            True ->
+              assign_task_skills_compat_overfull(
+                task_skills,
+                team,
+                similarity_index: similarity_index,
+              )
+
+            False -> {
+              let states =
+                list.map(team, fn(member) {
+                  MemberAssignmentState(member: member, assigned: [])
+                })
+              let max_per_member = ceil_div(list.length(task_skills), list.length(team))
+              let require_all_members = list.length(task_skills) >= list.length(team)
+
+              assign_search(
+                remaining_skills: task_skills,
+                states: states,
+                max_per_member: max_per_member,
+                require_all_members: require_all_members,
+                mode: mode,
+                similarity_index: similarity_index,
+              )
+            }
+          }
+      }
+    }
+  }
+}
+
+fn assign_task_skills_unique(
+  task_skills: List(TaskSkill),
+  team: List(Person),
+  mode mode: Mode,
+  similarity_index similarity_index: dict.Dict(#(String, String), Float),
+) -> AssignmentResult {
+  let indexed_members =
+    list.index_map(team, fn(member, index) { #(index, member) })
+  let indexed_task_skills =
+    list.index_map(task_skills, fn(task_skill, index) { #(index, task_skill) })
+  let member_by_index = dict.from_list(indexed_members)
+  let task_skill_by_index = dict.from_list(indexed_task_skills)
+  let score_matrix =
+    list.fold(indexed_members, dict.new(), fn(found_matrix, member_entry) {
+      let #(member_index, member) = member_entry
+
+      list.fold(indexed_task_skills, found_matrix, fn(found_inner, task_entry) {
+        let #(task_index, task_skill) = task_entry
+        let score =
+          coverage_for_person_and_task_skill(
+            member,
+            task_skill,
+            mode: mode,
+            similarity_index: similarity_index,
+          )
+
+        dict.insert(found_inner, #(member_index, task_index), score)
+      })
+    })
+  let member_count = list.length(team)
+  let task_count = list.length(task_skills)
+  let #(_best_state, memo) =
+    unique_best_state(
+      member_index: 0,
+      member_count: member_count,
+      used_mask: 0,
+      task_count: task_count,
+      score_matrix: score_matrix,
+      memo: dict.new(),
+    )
+  let assignment_pairs =
+    unique_assignments_from_choices(
+      member_index: 0,
+      member_count: member_count,
+      used_mask: 0,
+      task_count: task_count,
+      memo: memo,
+    )
+  let empty_assignments =
+    list.fold(indexed_members, dict.new(), fn(found, member_entry) {
+      let #(_index, member) = member_entry
+      dict.insert(found, member.id, [])
+    })
+  let assignments =
+    list.fold(assignment_pairs, empty_assignments, fn(found, pair) {
+      let #(member_index, task_index) = pair
+
+      case dict.get(member_by_index, member_index), dict.get(task_skill_by_index, task_index) {
+        Ok(member), Ok(task_skill) ->
+          dict.insert(found, member.id, [task_skill.id])
+
+        Error(Nil), _ -> found
+        _, Error(Nil) -> found
+      }
+    })
+  let score_by_member =
+    list.fold(assignment_pairs, dict.new(), fn(found, pair) {
+      let #(member_index, task_index) = pair
+      let score = dict_get_or_pair_float(score_matrix, #(member_index, task_index), 0.0)
+      dict.insert(found, member_index, score)
+    })
+  let member_scores =
+    list.map(indexed_members, fn(member_entry) {
+      let #(member_index, _member) = member_entry
+      dict_get_or_int_float(score_by_member, member_index, 0.0)
+    })
+
+  AssignmentResult(assignments:, skill_score: geometric_mean(member_scores))
+}
+
+fn unique_best_state(
+  member_index member_index: Int,
+  member_count member_count: Int,
+  used_mask used_mask: Int,
+  task_count task_count: Int,
+  score_matrix score_matrix: dict.Dict(#(Int, Int), Float),
+  memo memo: dict.Dict(#(Int, Int), UniqueState),
+) -> #(UniqueState, dict.Dict(#(Int, Int), UniqueState)) {
+  case member_index == member_count {
+    True -> #(UniqueState(score: 0.0, choice: -1), memo)
+
+    False ->
+      case dict.get(memo, #(member_index, used_mask)) {
+        Ok(cached) -> #(cached, memo)
+
+        Error(Nil) -> {
+          let initial = #(UniqueState(score: -1.0e30, choice: -1), memo)
+          let #(best_state, memo_after) =
+            int.range(
+              from: 0,
+              to: task_count,
+              with: initial,
+              run: fn(state, task_index) {
+                let #(current_best, current_memo) = state
+                let task_bit = int.bitwise_shift_left(1, task_index)
+                let already_used = int.bitwise_and(used_mask, task_bit) != 0
+
+                case already_used {
+                  True -> state
+
+                  False -> {
+                    let score =
+                      dict_get_or_pair_float(
+                        score_matrix,
+                        #(member_index, task_index),
+                        0.0,
+                      )
+
+                    case score <=. 0.0 {
+                      True -> state
+
+                      False -> {
+                        let #(next_state, next_memo) =
+                          unique_best_state(
+                            member_index: member_index + 1,
+                            member_count: member_count,
+                            used_mask: int.bitwise_or(used_mask, task_bit),
+                            task_count: task_count,
+                            score_matrix: score_matrix,
+                            memo: current_memo,
+                          )
+                        let candidate_score = safe_log(score) +. next_state.score
+
+                        case candidate_score >. current_best.score {
+                          True -> #(UniqueState(score: candidate_score, choice: task_index), next_memo)
+                          False -> #(current_best, next_memo)
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+            )
+          let memo_final =
+            dict.insert(memo_after, #(member_index, used_mask), best_state)
+
+          #(best_state, memo_final)
+        }
+      }
+  }
+}
+
+fn unique_assignments_from_choices(
+  member_index member_index: Int,
+  member_count member_count: Int,
+  used_mask used_mask: Int,
+  task_count task_count: Int,
+  memo memo: dict.Dict(#(Int, Int), UniqueState),
+) -> List(#(Int, Int)) {
+  case member_index == member_count {
+    True -> []
+
+    False -> {
+      let state =
+        unique_state_from_memo(memo, #(member_index, used_mask))
+
+      case state.choice < 0 || state.choice >= task_count {
+        True -> []
+
+        False -> {
+          let task_bit = int.bitwise_shift_left(1, state.choice)
+          [
+            #(member_index, state.choice),
+            ..unique_assignments_from_choices(
+              member_index: member_index + 1,
+              member_count: member_count,
+              used_mask: int.bitwise_or(used_mask, task_bit),
+              task_count: task_count,
+              memo: memo,
+            ),
+          ]
         }
       }
     }
+  }
+}
+
+fn unique_state_from_memo(
+  memo: dict.Dict(#(Int, Int), UniqueState),
+  key: #(Int, Int),
+) -> UniqueState {
+  case dict.get(memo, key) {
+    Ok(state) -> state
+    Error(Nil) -> UniqueState(score: -1.0e30, choice: -1)
   }
 }
 
@@ -1044,6 +1257,28 @@ fn dict_get_or(mapping: dict.Dict(String, Float), key: String, fallback: Float) 
 fn dict_get_or_pair(
   mapping: dict.Dict(#(String, String), Float),
   key: #(String, String),
+  fallback: Float,
+) -> Float {
+  case dict.get(mapping, key) {
+    Ok(value) -> value
+    Error(Nil) -> fallback
+  }
+}
+
+fn dict_get_or_pair_float(
+  mapping: dict.Dict(#(Int, Int), Float),
+  key: #(Int, Int),
+  fallback: Float,
+) -> Float {
+  case dict.get(mapping, key) {
+    Ok(value) -> value
+    Error(Nil) -> fallback
+  }
+}
+
+fn dict_get_or_int_float(
+  mapping: dict.Dict(Int, Float),
+  key: Int,
   fallback: Float,
 ) -> Float {
   case dict.get(mapping, key) {

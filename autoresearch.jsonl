@@ -1,1 +1,2 @@
 {"type":"config","name":"Optimize Gleam rewrite for speed/stability while preserving parity","metricName":"combined_ratio","metricUnit":"","bestDirection":"lower"}
+{"run":1,"commit":"57e8a3d","metric":14.759656746,"metrics":{},"status":"keep","description":"Baseline in-process parity+benchmark harness (quality+form workloads) after initial Gleam port","timestamp":1775637774653,"segment":0,"confidence":null,"iterationTokens":277,"asi":{"hypothesis":"Establish a trustworthy baseline metric combining speed ratio and parity checks before optimization."}}
