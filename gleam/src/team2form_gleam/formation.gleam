@@ -128,6 +128,22 @@ fn explore_tasks(
                 Some(cap) -> list.take(base_candidates, up_to: cap)
                 None -> base_candidates
               }
+            let task_preferences = scoring.preference_lookup_task(task.preferences)
+            let task_preferences_option =
+              case dict.is_empty(task_preferences) {
+                True -> None
+                False -> Some(task_preferences)
+              }
+            let task_preference_default =
+              case mode {
+                Compat ->
+                  case task_preferences_option {
+                    Some(_) -> Some(0.5)
+                    None -> Some(0.0)
+                  }
+
+                _ -> None
+              }
 
             choose_best_candidate(
               candidates: candidates,
@@ -138,6 +154,8 @@ fn explore_tasks(
               preset: preset,
               normalize_weights: normalize_weights,
               max_candidate_teams: max_candidate_teams,
+              task_preferences: task_preferences_option,
+              task_preference_default: task_preference_default,
               best: None,
               all_people: people,
               memo: memo,
@@ -160,6 +178,8 @@ fn choose_best_candidate(
   preset preset: Option(WeightPreset),
   normalize_weights normalize_weights: Bool,
   max_candidate_teams max_candidate_teams: Option(Int),
+  task_preferences task_preferences: Option(dict.Dict(String, Float)),
+  task_preference_default task_preference_default: Option(Float),
   best best: Option(SearchOutcome),
   all_people all_people: List(Person),
   memo memo: dict.Dict(#(String, String), Option(SearchOutcome)),
@@ -172,12 +192,6 @@ fn choose_best_candidate(
 
     [candidate, ..rest_candidates] -> {
       let remaining_people = remove_people(all_people, candidate)
-      let task_preferences = scoring.preference_lookup_task(task.preferences)
-      let task_preferences_option =
-        case dict.is_empty(task_preferences) {
-          True -> None
-          False -> Some(task_preferences)
-        }
 
       let teammate_ids =
         set.from_list(list.map(candidate, fn(member) { member.id }))
@@ -186,16 +200,6 @@ fn choose_best_candidate(
           has_explicit_social_preferences(member, teammate_ids)
         })
 
-      let task_preference_default =
-        case mode {
-          Compat ->
-            case dict.is_empty(task_preferences) {
-              True -> Some(0.0)
-              False -> Some(0.5)
-            }
-
-          _ -> None
-        }
       let social_preference_default =
         case mode {
           Compat ->
@@ -219,7 +223,7 @@ fn choose_best_candidate(
           mode: mode,
           preset: preset,
           normalize_weights: normalize_weights,
-          task_preferences: task_preferences_option,
+          task_preferences: task_preferences,
           compat_task_preference_default: task_preference_default,
           compat_social_preference_default: social_preference_default,
         )
@@ -271,6 +275,8 @@ fn choose_best_candidate(
         preset: preset,
         normalize_weights: normalize_weights,
         max_candidate_teams: max_candidate_teams,
+        task_preferences: task_preferences,
+        task_preference_default: task_preference_default,
         best: new_best,
         all_people: all_people,
         memo: memo_after_child,
