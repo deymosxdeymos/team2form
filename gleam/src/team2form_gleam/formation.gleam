@@ -3,6 +3,7 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/set
+import gleam/string
 import team2form_gleam/models.{
   TeamResult,
   TeamsResponse,
@@ -71,16 +72,20 @@ pub fn form_teams(
         ),
       )
 
-    False ->
-      case explore_tasks(
-        tasks: request.tasks,
-        people: request.people,
-        request: request,
-        mode: mode,
-        preset: preset,
-        normalize_weights: normalize_weights,
-        max_candidate_teams: max_candidate_teams,
-      ) {
+    False -> {
+      let #(search_outcome, _memo) =
+        explore_tasks(
+          tasks: request.tasks,
+          people: request.people,
+          request: request,
+          mode: mode,
+          preset: preset,
+          normalize_weights: normalize_weights,
+          max_candidate_teams: max_candidate_teams,
+          memo: dict.new(),
+        )
+
+      case search_outcome {
         Some(outcome) -> Ok(TeamsResponse(teams: outcome.teams_reversed))
         None ->
           Error(
@@ -89,6 +94,7 @@ pub fn form_teams(
             ),
           )
       }
+    }
   }
 }
 
@@ -100,30 +106,47 @@ fn explore_tasks(
   preset preset: Option(WeightPreset),
   normalize_weights normalize_weights: Bool,
   max_candidate_teams max_candidate_teams: Option(Int),
-) -> Option(SearchOutcome) {
-  case tasks {
-    [] -> Some(SearchOutcome(objective: 1.0, teams_reversed: []))
+  memo memo: dict.Dict(#(String, String), Option(SearchOutcome)),
+) -> #(
+  Option(SearchOutcome),
+  dict.Dict(#(String, String), Option(SearchOutcome)),
+) {
+  let cache_key = #(tasks_signature(tasks), people_signature(people))
 
-    [task, ..rest_tasks] -> {
-      let base_candidates = list.combinations(people, by: task.team_size)
-      let candidates =
-        case max_candidate_teams {
-          Some(cap) -> list.take(base_candidates, up_to: cap)
-          None -> base_candidates
+  case dict.get(memo, cache_key) {
+    Ok(cached) -> #(cached, memo)
+
+    Error(Nil) -> {
+      let #(outcome, memo_after) =
+        case tasks {
+          [] -> #(Some(SearchOutcome(objective: 1.0, teams_reversed: [])), memo)
+
+          [task, ..rest_tasks] -> {
+            let base_candidates = list.combinations(people, by: task.team_size)
+            let candidates =
+              case max_candidate_teams {
+                Some(cap) -> list.take(base_candidates, up_to: cap)
+                None -> base_candidates
+              }
+
+            choose_best_candidate(
+              candidates: candidates,
+              rest_tasks: rest_tasks,
+              request: request,
+              task: task,
+              mode: mode,
+              preset: preset,
+              normalize_weights: normalize_weights,
+              max_candidate_teams: max_candidate_teams,
+              best: None,
+              all_people: people,
+              memo: memo,
+            )
+          }
         }
 
-      choose_best_candidate(
-        candidates: candidates,
-        rest_tasks: rest_tasks,
-        request: request,
-        task: task,
-        mode: mode,
-        preset: preset,
-        normalize_weights: normalize_weights,
-        max_candidate_teams: max_candidate_teams,
-        best: None,
-        all_people: people,
-      )
+      let memo_final = dict.insert(memo_after, cache_key, outcome)
+      #(outcome, memo_final)
     }
   }
 }
@@ -139,9 +162,13 @@ fn choose_best_candidate(
   max_candidate_teams max_candidate_teams: Option(Int),
   best best: Option(SearchOutcome),
   all_people all_people: List(Person),
-) -> Option(SearchOutcome) {
+  memo memo: dict.Dict(#(String, String), Option(SearchOutcome)),
+) -> #(
+  Option(SearchOutcome),
+  dict.Dict(#(String, String), Option(SearchOutcome)),
+) {
   case candidates {
-    [] -> best
+    [] -> #(best, memo)
 
     [candidate, ..rest_candidates] -> {
       let remaining_people = remove_people(all_people, candidate)
@@ -209,8 +236,8 @@ fn choose_best_candidate(
       let team_result =
         TeamResult(task_id: task.id, people: assigned, quality: adjusted_quality)
 
-      let candidate_outcome =
-        case explore_tasks(
+      let #(child_outcome, memo_after_child) =
+        explore_tasks(
           tasks: rest_tasks,
           people: remaining_people,
           request: request,
@@ -218,7 +245,10 @@ fn choose_best_candidate(
           preset: preset,
           normalize_weights: normalize_weights,
           max_candidate_teams: max_candidate_teams,
-        ) {
+          memo: memo,
+        )
+      let candidate_outcome =
+        case child_outcome {
           Some(child) ->
             Some(
               SearchOutcome(
@@ -243,6 +273,7 @@ fn choose_best_candidate(
         max_candidate_teams: max_candidate_teams,
         best: new_best,
         all_people: all_people,
+        memo: memo_after_child,
       )
     }
   }
@@ -298,4 +329,17 @@ fn dict_get_float(mapping: dict.Dict(String, Float), key: String, fallback: Floa
     Ok(value) -> value
     Error(Nil) -> fallback
   }
+}
+
+fn people_signature(people: List(Person)) -> String {
+  people
+  |> list.map(fn(person) { person.id })
+  |> list.sort(string.compare)
+  |> string.join(with: ",")
+}
+
+fn tasks_signature(tasks: List(models.Task)) -> String {
+  tasks
+  |> list.map(fn(task) { task.id })
+  |> string.join(with: ",")
 }
