@@ -93,6 +93,11 @@ pub fn form_teams(
       let task_order =
         list.index_map(request.tasks, fn(task, index) { #(task.id, index) })
         |> dict.from_list
+      let request_has_non_self_preferences =
+        case mode {
+          Compat -> list.any(request.people, has_non_self_preference)
+          _ -> False
+        }
       let #(search_outcome, _memo) =
         explore_tasks(
           tasks: task_evals,
@@ -102,6 +107,7 @@ pub fn form_teams(
           preset: preset,
           normalize_weights: normalize_weights,
           max_candidate_teams: max_candidate_teams,
+          request_has_non_self_preferences: request_has_non_self_preferences,
           memo: dict.new(),
         )
 
@@ -218,6 +224,7 @@ fn explore_tasks(
   preset preset: Option(WeightPreset),
   normalize_weights normalize_weights: Bool,
   max_candidate_teams max_candidate_teams: Option(Int),
+  request_has_non_self_preferences request_has_non_self_preferences: Bool,
   memo memo: dict.Dict(#(String, String), Option(SearchOutcome)),
 ) -> #(
   Option(SearchOutcome),
@@ -251,6 +258,7 @@ fn explore_tasks(
               preset: preset,
               normalize_weights: normalize_weights,
               max_candidate_teams: max_candidate_teams,
+              request_has_non_self_preferences: request_has_non_self_preferences,
               task_preferences: task_preferences,
               task_preference_default: task_preference_default,
               best: None,
@@ -275,6 +283,7 @@ fn choose_best_candidate(
   preset preset: Option(WeightPreset),
   normalize_weights normalize_weights: Bool,
   max_candidate_teams max_candidate_teams: Option(Int),
+  request_has_non_self_preferences request_has_non_self_preferences: Bool,
   task_preferences task_preferences: Option(dict.Dict(String, Float)),
   task_preference_default task_preference_default: Option(Float),
   best best: Option(SearchOutcome),
@@ -292,23 +301,28 @@ fn choose_best_candidate(
 
       let has_team_social_preferences =
         case mode {
-          Compat -> {
-            let has_any_non_self_preferences =
-              list.any(candidate, has_non_self_preference)
-
-            case has_any_non_self_preferences {
+          Compat ->
+            case request_has_non_self_preferences {
               False -> False
 
               True -> {
-                let teammate_ids =
-                  set.from_list(list.map(candidate, fn(member) { member.id }))
+                let has_any_non_self_preferences =
+                  list.any(candidate, has_non_self_preference)
 
-                list.any(candidate, fn(member) {
-                  has_explicit_social_preferences(member, teammate_ids)
-                })
+                case has_any_non_self_preferences {
+                  False -> False
+
+                  True -> {
+                    let teammate_ids =
+                      set.from_list(list.map(candidate, fn(member) { member.id }))
+
+                    list.any(candidate, fn(member) {
+                      has_explicit_social_preferences(member, teammate_ids)
+                    })
+                  }
+                }
               }
             }
-          }
 
           _ -> False
         }
@@ -362,6 +376,7 @@ fn choose_best_candidate(
           preset: preset,
           normalize_weights: normalize_weights,
           max_candidate_teams: max_candidate_teams,
+          request_has_non_self_preferences: request_has_non_self_preferences,
           memo: memo,
         )
       let candidate_outcome =
@@ -388,6 +403,7 @@ fn choose_best_candidate(
         preset: preset,
         normalize_weights: normalize_weights,
         max_candidate_teams: max_candidate_teams,
+        request_has_non_self_preferences: request_has_non_self_preferences,
         task_preferences: task_preferences,
         task_preference_default: task_preference_default,
         best: new_best,
