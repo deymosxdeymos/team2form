@@ -290,12 +290,28 @@ fn choose_best_candidate(
     [candidate, ..rest_candidates] -> {
       let remaining_people = remove_people(all_people, candidate)
 
-      let teammate_ids =
-        set.from_list(list.map(candidate, fn(member) { member.id }))
       let has_team_social_preferences =
-        list.any(candidate, fn(member) {
-          has_explicit_social_preferences(member, teammate_ids)
-        })
+        case mode {
+          Compat -> {
+            let has_any_non_self_preferences =
+              list.any(candidate, has_non_self_preference)
+
+            case has_any_non_self_preferences {
+              False -> False
+
+              True -> {
+                let teammate_ids =
+                  set.from_list(list.map(candidate, fn(member) { member.id }))
+
+                list.any(candidate, fn(member) {
+                  has_explicit_social_preferences(member, teammate_ids)
+                })
+              }
+            }
+          }
+
+          _ -> False
+        }
 
       let social_preference_default =
         case mode {
@@ -410,6 +426,15 @@ fn remove_people(all_people: List(Person), used_people: List(Person)) -> List(Pe
       False -> True
     }
   })
+}
+
+fn has_non_self_preference(member: Person) -> Bool {
+  case member.preferences {
+    Some(preferences) ->
+      list.any(preferences, fn(preference) { preference.person_id != member.id })
+
+    None -> False
+  }
 }
 
 fn has_explicit_social_preferences(

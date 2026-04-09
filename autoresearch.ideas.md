@@ -5,3 +5,4 @@
 - Revisit formation candidate-quality caching with a cheaper key (e.g. bitmask/int key instead of string signatures). A keyed cache improved `quality_ratio` but regressed combined metric due form-side key overhead.
 - Revisit formation-side caching of team personality/social components with lower-cost team keys. Component-override caching improved quality-side ratios but did not pay off with current string-signature lookup overhead.
 - Port Python's optimized Compat assignment path (`_assign_task_skills_compat`) more directly into Gleam (or equivalent semantics-preserving strategy) instead of continued micro-tuning around current DP/search implementation.
+  - Start with a compile-safe, incremental implementation of the common `max_skills_per_member == 1` case (task_count <= team_count), validating parity/checks at each helper step before benchmarking.
