@@ -361,7 +361,6 @@ fn dict_get_float(mapping: dict.Dict(String, Float), key: String, fallback: Floa
 fn people_signature(people: List(Person)) -> String {
   people
   |> list.map(fn(person) { person.id })
-  |> list.sort(string.compare)
   |> string.join(with: ",")
 }
 
