@@ -21,6 +21,14 @@ pub type TeamFormationError {
 
 pub const default_max_candidate_teams = 10_000
 
+type TaskEval {
+  TaskEval(
+    task: models.Task,
+    task_preferences: Option(dict.Dict(String, Float)),
+    task_preference_default: Option(Float),
+  )
+}
+
 type SearchOutcome {
   SearchOutcome(objective: Float, teams_reversed: List(TeamResult))
 }
@@ -73,9 +81,10 @@ pub fn form_teams(
       )
 
     False -> {
+      let task_evals = build_task_evals(request.tasks, mode)
       let #(search_outcome, _memo) =
         explore_tasks(
-          tasks: request.tasks,
+          tasks: task_evals,
           people: request.people,
           request: request,
           mode: mode,
@@ -98,8 +107,35 @@ pub fn form_teams(
   }
 }
 
+fn build_task_evals(tasks: List(models.Task), mode: Mode) -> List(TaskEval) {
+  list.map(tasks, fn(task) {
+    let task_preferences = scoring.preference_lookup_task(task.preferences)
+    let task_preferences_option =
+      case dict.is_empty(task_preferences) {
+        True -> None
+        False -> Some(task_preferences)
+      }
+    let task_preference_default =
+      case mode {
+        Compat ->
+          case task_preferences_option {
+            Some(_) -> Some(0.5)
+            None -> Some(0.0)
+          }
+
+        _ -> None
+      }
+
+    TaskEval(
+      task: task,
+      task_preferences: task_preferences_option,
+      task_preference_default: task_preference_default,
+    )
+  })
+}
+
 fn explore_tasks(
-  tasks tasks: List(models.Task),
+  tasks tasks: List(TaskEval),
   people people: List(Person),
   request request: FormationRequest,
   mode mode: Mode,
@@ -121,28 +157,13 @@ fn explore_tasks(
         case tasks {
           [] -> #(Some(SearchOutcome(objective: 1.0, teams_reversed: [])), memo)
 
-          [task, ..rest_tasks] -> {
+          [task_eval, ..rest_tasks] -> {
+            let TaskEval(task:, task_preferences:, task_preference_default:) = task_eval
             let base_candidates = list.combinations(people, by: task.team_size)
             let candidates =
               case max_candidate_teams {
                 Some(cap) -> list.take(base_candidates, up_to: cap)
                 None -> base_candidates
-              }
-            let task_preferences = scoring.preference_lookup_task(task.preferences)
-            let task_preferences_option =
-              case dict.is_empty(task_preferences) {
-                True -> None
-                False -> Some(task_preferences)
-              }
-            let task_preference_default =
-              case mode {
-                Compat ->
-                  case task_preferences_option {
-                    Some(_) -> Some(0.5)
-                    None -> Some(0.0)
-                  }
-
-                _ -> None
               }
 
             choose_best_candidate(
@@ -154,7 +175,7 @@ fn explore_tasks(
               preset: preset,
               normalize_weights: normalize_weights,
               max_candidate_teams: max_candidate_teams,
-              task_preferences: task_preferences_option,
+              task_preferences: task_preferences,
               task_preference_default: task_preference_default,
               best: None,
               all_people: people,
@@ -171,7 +192,7 @@ fn explore_tasks(
 
 fn choose_best_candidate(
   candidates candidates: List(List(Person)),
-  rest_tasks rest_tasks: List(models.Task),
+  rest_tasks rest_tasks: List(TaskEval),
   request request: FormationRequest,
   task task: models.Task,
   mode mode: Mode,
@@ -344,8 +365,11 @@ fn people_signature(people: List(Person)) -> String {
   |> string.join(with: ",")
 }
 
-fn tasks_signature(tasks: List(models.Task)) -> String {
+fn tasks_signature(tasks: List(TaskEval)) -> String {
   tasks
-  |> list.map(fn(task) { task.id })
+  |> list.map(fn(task_eval) {
+    let TaskEval(task:, ..) = task_eval
+    task.id
+  })
   |> string.join(with: ",")
 }
