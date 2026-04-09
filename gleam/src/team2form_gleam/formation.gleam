@@ -1,6 +1,9 @@
 import gleam/dict
+import gleam/float
+import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
+import gleam/order
 import gleam/result
 import gleam/set
 import gleam/string
@@ -81,7 +84,15 @@ pub fn form_teams(
       )
 
     False -> {
-      let task_evals = build_task_evals(request.tasks, mode)
+      let ordered_tasks =
+        case max_candidate_teams {
+          None -> order_tasks_by_hardness(request.tasks, request.people, request.similarities, mode)
+          Some(_) -> request.tasks
+        }
+      let task_evals = build_task_evals(ordered_tasks, mode)
+      let task_order =
+        list.index_map(request.tasks, fn(task, index) { #(task.id, index) })
+        |> dict.from_list
       let #(search_outcome, _memo) =
         explore_tasks(
           tasks: task_evals,
@@ -95,7 +106,19 @@ pub fn form_teams(
         )
 
       case search_outcome {
-        Some(outcome) -> Ok(TeamsResponse(teams: outcome.teams_reversed))
+        Some(outcome) ->
+          Ok(
+            TeamsResponse(
+              teams:
+                list.sort(outcome.teams_reversed, fn(left, right) {
+                  int.compare(
+                    dict_get_int(task_order, left.task_id, 0),
+                    dict_get_int(task_order, right.task_id, 0),
+                  )
+                }),
+            ),
+          )
+
         None ->
           Error(
             TeamFormationError(
@@ -105,6 +128,59 @@ pub fn form_teams(
       }
     }
   }
+}
+
+fn order_tasks_by_hardness(
+  tasks: List(models.Task),
+  people: List(Person),
+  similarities: Option(List(models.Similarity)),
+  mode: Mode,
+) -> List(models.Task) {
+  let similarity_index = scoring.similarity_lookup(similarities)
+
+  list.sort(tasks, fn(left, right) {
+    let left_hardness = task_hardness(left, people, mode, similarity_index)
+    let right_hardness = task_hardness(right, people, mode, similarity_index)
+
+    case left_hardness >. right_hardness {
+      True -> order.Lt
+
+      False ->
+        case left_hardness <. right_hardness {
+          True -> order.Gt
+          False -> string.compare(left.id, right.id)
+        }
+    }
+  })
+}
+
+fn task_hardness(
+  task: models.Task,
+  people: List(Person),
+  mode: Mode,
+  similarity_index: dict.Dict(#(String, String), Float),
+) -> Float {
+  let base = int.to_float(task.team_size)
+
+  let skill_hardness =
+    list.fold(task.skills, 0.0, fn(total, task_skill) {
+      let best_coverage =
+        list.fold(people, 0.0, fn(best, person) {
+          let coverage =
+            scoring.coverage_for_person_and_task_skill(
+              person,
+              task_skill,
+              mode: mode,
+              similarity_index: similarity_index,
+            )
+
+          float.max(best, coverage)
+        })
+
+      total +. task_skill.level *. { 1.0 -. best_coverage }
+    })
+
+  base +. skill_hardness
 }
 
 fn build_task_evals(tasks: List(models.Task), mode: Mode) -> List(TaskEval) {
@@ -348,6 +424,13 @@ fn has_explicit_social_preferences(
       })
 
     None -> False
+  }
+}
+
+fn dict_get_int(mapping: dict.Dict(String, Int), key: String, fallback: Int) -> Int {
+  case dict.get(mapping, key) {
+    Ok(value) -> value
+    Error(Nil) -> fallback
   }
 }
 
