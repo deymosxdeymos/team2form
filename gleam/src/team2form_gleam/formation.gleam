@@ -436,12 +436,22 @@ fn remove_people(all_people: List(Person), used_people: List(Person)) -> List(Pe
       set.insert(found, person.id)
     })
 
-  list.filter(all_people, fn(person) {
-    case set.contains(used_ids, person.id) {
-      True -> False
-      False -> True
-    }
-  })
+  remove_people_with_set(all_people, used_ids)
+}
+
+fn remove_people_with_set(
+  people: List(Person),
+  used_ids: set.Set(String),
+) -> List(Person) {
+  case people {
+    [] -> []
+
+    [person, ..rest] ->
+      case set.contains(used_ids, person.id) {
+        True -> remove_people_with_set(rest, used_ids)
+        False -> [person, ..remove_people_with_set(rest, used_ids)]
+      }
+  }
 }
 
 fn has_non_self_preference(member: Person) -> Bool {
