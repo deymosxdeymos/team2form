@@ -527,12 +527,38 @@ pub fn assign_task_skills(
       let equal_partition = task_count == team_count
       case equal_partition {
         True ->
-          assign_task_skills_unique(
-            task_skills,
-            team,
-            mode: mode,
-            similarity_index: similarity_index,
-          )
+          case mode {
+            Compat ->
+              case compat_unique_perfect_assignments(task_skills, team) {
+                Some(assignments) -> AssignmentResult(assignments: assignments, skill_score: 1.0)
+
+                None ->
+                  case task_count == 3 && team_count == 3 {
+                    True ->
+                      assign_task_skills_unique_compat_3x3(
+                        task_skills,
+                        team,
+                        similarity_index: similarity_index,
+                      )
+
+                    False ->
+                      assign_task_skills_unique(
+                        task_skills,
+                        team,
+                        mode: mode,
+                        similarity_index: similarity_index,
+                      )
+                  }
+              }
+
+            _ ->
+              assign_task_skills_unique(
+                task_skills,
+                team,
+                mode: mode,
+                similarity_index: similarity_index,
+              )
+          }
 
         False ->
           case mode == Compat && team_count > task_count {
@@ -646,6 +672,208 @@ fn assign_task_skills_unique(
     })
 
   AssignmentResult(assignments:, skill_score: geometric_mean(member_scores))
+}
+
+fn compat_unique_perfect_assignments(
+  task_skills: List(TaskSkill),
+  team: List(Person),
+) -> Option(dict.Dict(String, List(String))) {
+  let initial_assignments =
+    list.fold(team, dict.new(), fn(found, member) {
+      dict.insert(found, member.id, [])
+    })
+  let #(assignments, used_member_ids, valid) =
+    list.fold(task_skills, #(initial_assignments, set.new(), True), fn(state, task_skill) {
+      let #(found_assignments, found_used_member_ids, found_valid) = state
+
+      case found_valid {
+        False -> state
+
+        True -> {
+          let perfect_member_ids_reversed =
+            list.fold(team, [], fn(found, member) {
+              case member_has_perfect_skill(member, task_skill.id) {
+                True -> [member.id, ..found]
+                False -> found
+              }
+            })
+          let perfect_member_ids = list.reverse(perfect_member_ids_reversed)
+
+          case perfect_member_ids {
+            [member_id] ->
+              case set.contains(found_used_member_ids, member_id) {
+                True -> #(found_assignments, found_used_member_ids, False)
+
+                False ->
+                  #(
+                    dict.insert(found_assignments, member_id, [task_skill.id]),
+                    set.insert(found_used_member_ids, member_id),
+                    True,
+                  )
+              }
+
+            _ -> #(found_assignments, found_used_member_ids, False)
+          }
+        }
+      }
+    })
+
+  case valid && set.size(used_member_ids) == list.length(task_skills) {
+    True -> Some(assignments)
+    False -> None
+  }
+}
+
+fn member_has_perfect_skill(member: Person, task_skill_id: String) -> Bool {
+  list.any(member.skills, fn(skill) {
+    skill.id == task_skill_id && skill.level >=. 1.0
+  })
+}
+
+fn assign_task_skills_unique_compat_3x3(
+  task_skills: List(TaskSkill),
+  team: List(Person),
+  similarity_index similarity_index: dict.Dict(#(String, String), Float),
+) -> AssignmentResult {
+  case task_skills, team {
+    [task0, task1, task2], [member0, member1, member2] -> {
+      let s00 =
+        coverage_for_person_and_task_skill(
+          member0,
+          task0,
+          mode: Compat,
+          similarity_index: similarity_index,
+        )
+      let s01 =
+        coverage_for_person_and_task_skill(
+          member0,
+          task1,
+          mode: Compat,
+          similarity_index: similarity_index,
+        )
+      let s02 =
+        coverage_for_person_and_task_skill(
+          member0,
+          task2,
+          mode: Compat,
+          similarity_index: similarity_index,
+        )
+      let s10 =
+        coverage_for_person_and_task_skill(
+          member1,
+          task0,
+          mode: Compat,
+          similarity_index: similarity_index,
+        )
+      let s11 =
+        coverage_for_person_and_task_skill(
+          member1,
+          task1,
+          mode: Compat,
+          similarity_index: similarity_index,
+        )
+      let s12 =
+        coverage_for_person_and_task_skill(
+          member1,
+          task2,
+          mode: Compat,
+          similarity_index: similarity_index,
+        )
+      let s20 =
+        coverage_for_person_and_task_skill(
+          member2,
+          task0,
+          mode: Compat,
+          similarity_index: similarity_index,
+        )
+      let s21 =
+        coverage_for_person_and_task_skill(
+          member2,
+          task1,
+          mode: Compat,
+          similarity_index: similarity_index,
+        )
+      let s22 =
+        coverage_for_person_and_task_skill(
+          member2,
+          task2,
+          mode: Compat,
+          similarity_index: similarity_index,
+        )
+
+      let p012 = compat_permutation_log_score(s00, s11, s22)
+      let p021 = compat_permutation_log_score(s00, s12, s21)
+      let p102 = compat_permutation_log_score(s01, s10, s22)
+      let p120 = compat_permutation_log_score(s01, s12, s20)
+      let p201 = compat_permutation_log_score(s02, s10, s21)
+      let p210 = compat_permutation_log_score(s02, s11, s20)
+
+      let permutation_scores =
+        [
+          #(p012, #(0, 1, 2)),
+          #(p021, #(0, 2, 1)),
+          #(p102, #(1, 0, 2)),
+          #(p120, #(1, 2, 0)),
+          #(p201, #(2, 0, 1)),
+          #(p210, #(2, 1, 0)),
+        ]
+      let #(_best_score, best_permutation) =
+        list.fold(permutation_scores, #(-1.0e30, #(0, 1, 2)), fn(found, candidate) {
+          let #(found_score, found_permutation) = found
+          let #(candidate_score, candidate_permutation) = candidate
+
+          case candidate_score >. found_score {
+            True -> #(candidate_score, candidate_permutation)
+            False -> #(found_score, found_permutation)
+          }
+        })
+      let #(task_for_member0, task_for_member1, task_for_member2) = best_permutation
+      let assignments =
+        dict.new()
+        |> dict.insert(member0.id, [task_skill_id_at_3(task0, task1, task2, task_for_member0)])
+        |> dict.insert(member1.id, [task_skill_id_at_3(task0, task1, task2, task_for_member1)])
+        |> dict.insert(member2.id, [task_skill_id_at_3(task0, task1, task2, task_for_member2)])
+      let member_scores =
+        [
+          task_score_at_3(s00, s01, s02, task_for_member0),
+          task_score_at_3(s10, s11, s12, task_for_member1),
+          task_score_at_3(s20, s21, s22, task_for_member2),
+        ]
+
+      AssignmentResult(assignments:, skill_score: geometric_mean(member_scores))
+    }
+
+    _, _ ->
+      assign_task_skills_unique(
+        task_skills,
+        team,
+        mode: Compat,
+        similarity_index: similarity_index,
+      )
+  }
+}
+
+fn compat_permutation_log_score(a: Float, b: Float, c: Float) -> Float {
+  case a <=. 0.0 || b <=. 0.0 || c <=. 0.0 {
+    True -> -1.0e30
+    False -> safe_log(a) +. safe_log(b) +. safe_log(c)
+  }
+}
+
+fn task_skill_id_at_3(task0: TaskSkill, task1: TaskSkill, task2: TaskSkill, index: Int) -> String {
+  case index {
+    0 -> task0.id
+    1 -> task1.id
+    _ -> task2.id
+  }
+}
+
+fn task_score_at_3(score0: Float, score1: Float, score2: Float, index: Int) -> Float {
+  case index {
+    0 -> score0
+    1 -> score1
+    _ -> score2
+  }
 }
 
 fn unique_best_state(

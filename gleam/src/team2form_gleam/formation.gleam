@@ -367,32 +367,45 @@ fn choose_best_candidate(
       let team_result =
         TeamResult(task_id: task.id, people: assigned, quality: adjusted_quality)
 
-      let #(child_outcome, memo_after_child) =
-        explore_tasks(
-          tasks: rest_tasks,
-          people: remaining_people,
-          request: request,
-          mode: mode,
-          preset: preset,
-          normalize_weights: normalize_weights,
-          max_candidate_teams: max_candidate_teams,
-          request_has_non_self_preferences: request_has_non_self_preferences,
-          memo: memo,
-        )
-      let candidate_outcome =
-        case child_outcome {
-          Some(child) ->
-            Some(
-              SearchOutcome(
-                objective: adjusted_quality *. child.objective,
-                teams_reversed: [team_result, ..child.teams_reversed],
-              ),
-            )
-
-          None -> None
+      let should_prune =
+        case best {
+          Some(current_best) -> adjusted_quality <=. current_best.objective
+          None -> False
         }
 
-      let new_best = better_outcome(best, candidate_outcome)
+      let #(new_best, memo_after_child) =
+        case should_prune {
+          True -> #(best, memo)
+
+          False -> {
+            let #(child_outcome, memo_after) =
+              explore_tasks(
+                tasks: rest_tasks,
+                people: remaining_people,
+                request: request,
+                mode: mode,
+                preset: preset,
+                normalize_weights: normalize_weights,
+                max_candidate_teams: max_candidate_teams,
+                request_has_non_self_preferences: request_has_non_self_preferences,
+                memo: memo,
+              )
+            let candidate_outcome =
+              case child_outcome {
+                Some(child) ->
+                  Some(
+                    SearchOutcome(
+                      objective: adjusted_quality *. child.objective,
+                      teams_reversed: [team_result, ..child.teams_reversed],
+                    ),
+                  )
+
+                None -> None
+              }
+
+            #(better_outcome(best, candidate_outcome), memo_after)
+          }
+        }
 
       choose_best_candidate(
         candidates: rest_candidates,
@@ -431,12 +444,75 @@ fn better_outcome(
 }
 
 fn remove_people(all_people: List(Person), used_people: List(Person)) -> List(Person) {
-  let used_ids =
-    list.fold(used_people, set.new(), fn(found, person) {
-      set.insert(found, person.id)
-    })
+  case used_people {
+    [] -> all_people
 
-  remove_people_with_set(all_people, used_ids)
+    [first] -> remove_people_with_ids_1(all_people, first.id)
+
+    [first, second] ->
+      remove_people_with_ids_2(all_people, first.id, second.id)
+
+    [first, second, third] ->
+      remove_people_with_ids_3(all_people, first.id, second.id, third.id)
+
+    _ -> {
+      let used_ids =
+        list.fold(used_people, set.new(), fn(found, person) {
+          set.insert(found, person.id)
+        })
+
+      remove_people_with_set(all_people, used_ids)
+    }
+  }
+}
+
+fn remove_people_with_ids_1(people: List(Person), id1: String) -> List(Person) {
+  case people {
+    [] -> []
+
+    [person, ..rest] ->
+      case person.id == id1 {
+        True -> remove_people_with_ids_1(rest, id1)
+        False -> [person, ..remove_people_with_ids_1(rest, id1)]
+      }
+  }
+}
+
+fn remove_people_with_ids_2(
+  people: List(Person),
+  id1: String,
+  id2: String,
+) -> List(Person) {
+  case people {
+    [] -> []
+
+    [person, ..rest] -> {
+      let should_remove = person.id == id1 || person.id == id2
+      case should_remove {
+        True -> remove_people_with_ids_2(rest, id1, id2)
+        False -> [person, ..remove_people_with_ids_2(rest, id1, id2)]
+      }
+    }
+  }
+}
+
+fn remove_people_with_ids_3(
+  people: List(Person),
+  id1: String,
+  id2: String,
+  id3: String,
+) -> List(Person) {
+  case people {
+    [] -> []
+
+    [person, ..rest] -> {
+      let should_remove = person.id == id1 || person.id == id2 || person.id == id3
+      case should_remove {
+        True -> remove_people_with_ids_3(rest, id1, id2, id3)
+        False -> [person, ..remove_people_with_ids_3(rest, id1, id2, id3)]
+      }
+    }
+  }
 }
 
 fn remove_people_with_set(
