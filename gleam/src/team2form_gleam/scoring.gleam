@@ -465,19 +465,19 @@ fn compat_gender_bonus(team: List(Person)) -> Float {
       }
 
     [_, _, ..] -> {
-      let female_count =
-        int.to_float(
-          list.count(team, where: fn(member) {
-            member.gender == Some(Female)
-          }),
-        )
-      let male_count =
-        int.to_float(
-          list.count(team, where: fn(member) {
-            member.gender == Some(Male)
-          }),
-        )
-      let total = int.to_float(list.length(team))
+      let #(female_count_int, male_count_int, total_int) =
+        list.fold(team, #(0, 0, 0), fn(state, member) {
+          let #(found_female, found_male, found_total) = state
+
+          case member.gender {
+            Some(Female) -> #(found_female + 1, found_male, found_total + 1)
+            Some(Male) -> #(found_female, found_male + 1, found_total + 1)
+            None -> #(found_female, found_male, found_total + 1)
+          }
+        })
+      let female_count = int.to_float(female_count_int)
+      let male_count = int.to_float(male_count_int)
+      let total = int.to_float(total_int)
       let missing_count = total -. female_count -. male_count
       let effective_female = female_count +. 0.5 *. missing_count
       let effective_male = male_count +. 0.5 *. missing_count
