@@ -1,9 +1,16 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs'
 import { performance } from 'node:perf_hooks'
-import { quality_from_json, form_from_json } from '../build/dev/javascript/team2form_gleam/team2form_gleam.mjs'
+import { quality_from_json_with_mode_preset, form_from_json_with_mode_preset } from '../build/dev/javascript/team2form_gleam/team2form_gleam.mjs'
 import { None, Some } from '../build/dev/javascript/gleam_stdlib/gleam/option.mjs'
 import { Ok } from '../build/dev/javascript/team2form_gleam/gleam.mjs'
+import {
+  Mode$Compat,
+  Mode$Paper,
+  WeightPreset$LiveCompat,
+  WeightPreset$DocsRecommended,
+  WeightPreset$PaperBalanced,
+} from '../build/dev/javascript/team2form_gleam/team2form_gleam/modes.mjs'
 
 function usage() {
   process.stderr.write(
@@ -23,17 +30,38 @@ if (!Number.isFinite(iterations) || iterations <= 0) {
   process.exit(2)
 }
 
-const mode = modeRaw ?? 'compat'
-const preset = presetRaw && presetRaw !== 'none' ? new Some(presetRaw) : new None()
+const modeName = modeRaw ?? 'compat'
+const mode =
+  modeName === 'compat'
+    ? Mode$Compat()
+    : modeName === 'paper'
+      ? Mode$Paper()
+      : (() => {
+          process.stderr.write(`invalid mode: ${modeName}\n`)
+          process.exit(2)
+        })()
+const presetValue =
+  !presetRaw || presetRaw === 'none'
+    ? new None()
+    : presetRaw === 'live_compat'
+      ? new Some(WeightPreset$LiveCompat())
+      : presetRaw === 'docs_recommended'
+        ? new Some(WeightPreset$DocsRecommended())
+        : presetRaw === 'paper_balanced'
+          ? new Some(WeightPreset$PaperBalanced())
+          : (() => {
+              process.stderr.write(`invalid preset: ${presetRaw}\n`)
+              process.exit(2)
+            })()
 const none = new None()
 const payload = readFileSync(payloadPath, 'utf8')
 
 function runOne() {
   if (command === 'quality') {
-    return quality_from_json(payload, mode, preset, false)
+    return quality_from_json_with_mode_preset(payload, mode, presetValue, false)
   }
   if (command === 'form') {
-    return form_from_json(payload, mode, preset, false, none)
+    return form_from_json_with_mode_preset(payload, mode, presetValue, false, none)
   }
   usage()
 }

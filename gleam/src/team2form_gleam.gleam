@@ -9,14 +9,12 @@ pub fn help_info() -> String {
   codec.encode_help_info()
 }
 
-pub fn quality_from_json(
+pub fn quality_from_json_with_mode_preset(
   input_json: String,
-  mode_name: String,
-  preset_name: Option(String),
+  mode: modes.Mode,
+  preset: Option(modes.WeightPreset),
   normalize_weights: Bool,
 ) -> Result(String, String) {
-  use mode <- result.try(modes.mode_from_string(mode_name))
-  use preset <- result.try(parse_preset(preset_name))
   use request <- result.try(codec.decode_team_quality_request(input_json))
 
   let quality =
@@ -32,15 +30,30 @@ pub fn quality_from_json(
   Ok(codec.encode_quality_breakdown(quality))
 }
 
-pub fn form_from_json(
+pub fn quality_from_json(
   input_json: String,
   mode_name: String,
   preset_name: Option(String),
   normalize_weights: Bool,
-  max_candidate_teams: Option(Int),
 ) -> Result(String, String) {
   use mode <- result.try(modes.mode_from_string(mode_name))
   use preset <- result.try(parse_preset(preset_name))
+
+  quality_from_json_with_mode_preset(
+    input_json,
+    mode,
+    preset,
+    normalize_weights,
+  )
+}
+
+pub fn form_from_json_with_mode_preset(
+  input_json: String,
+  mode: modes.Mode,
+  preset: Option(modes.WeightPreset),
+  normalize_weights: Bool,
+  max_candidate_teams: Option(Int),
+) -> Result(String, String) {
   use request <- result.try(codec.decode_formation_request(input_json))
   use response <-
     result.try(
@@ -55,6 +68,25 @@ pub fn form_from_json(
     )
 
   Ok(codec.encode_teams_response(response))
+}
+
+pub fn form_from_json(
+  input_json: String,
+  mode_name: String,
+  preset_name: Option(String),
+  normalize_weights: Bool,
+  max_candidate_teams: Option(Int),
+) -> Result(String, String) {
+  use mode <- result.try(modes.mode_from_string(mode_name))
+  use preset <- result.try(parse_preset(preset_name))
+
+  form_from_json_with_mode_preset(
+    input_json,
+    mode,
+    preset,
+    normalize_weights,
+    max_candidate_teams,
+  )
 }
 
 fn parse_preset(name: Option(String)) -> Result(Option(modes.WeightPreset), String) {
