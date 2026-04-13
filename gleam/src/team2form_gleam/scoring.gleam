@@ -199,7 +199,29 @@ fn calculate_task_preference_score(
         None -> compat_default
       }
 
-    [_, _, ..] ->
+    [first_member, second_member, third_member] ->
+      case task_preferences {
+        Some(preferences) -> {
+          let first_score = dict_get_or(preferences, first_member.id, compat_default)
+          let second_score = dict_get_or(preferences, second_member.id, compat_default)
+          let third_score = dict_get_or(preferences, third_member.id, compat_default)
+
+          case first_score <=. 0.0 || second_score <=. 0.0 || third_score <=. 0.0 {
+            True -> 0.0
+            False ->
+              float.exponential(
+                {
+                  safe_log(first_score) +. safe_log(second_score) +. safe_log(third_score)
+                }
+                /. 3.0,
+              )
+          }
+        }
+
+        None -> compat_default
+      }
+
+    [_, _, _, ..] ->
       case task_preferences {
         Some(preferences) ->
           geometric_mean(
