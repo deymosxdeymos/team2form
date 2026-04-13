@@ -297,8 +297,6 @@ fn choose_best_candidate(
     [] -> #(best, memo)
 
     [candidate, ..rest_candidates] -> {
-      let remaining_people = remove_people(all_people, candidate)
-
       let has_team_social_preferences =
         case mode {
           Compat ->
@@ -375,6 +373,7 @@ fn choose_best_candidate(
           True -> #(best, memo)
 
           False -> {
+            let remaining_people = remove_people(all_people, candidate)
             let #(child_outcome, memo_after) =
               explore_tasks(
                 tasks: rest_tasks,
