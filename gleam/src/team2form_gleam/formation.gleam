@@ -329,14 +329,7 @@ fn choose_best_candidate(
                 case candidate_has_non_self_source {
                   False -> False
 
-                  True -> {
-                    let teammate_ids =
-                      set.from_list(list.map(candidate, fn(member) { member.id }))
-
-                    list.any(candidate, fn(member) {
-                      has_explicit_social_preferences(member, teammate_ids)
-                    })
-                  }
+                  True -> candidate_has_explicit_social_preferences(candidate)
                 }
               }
             }
@@ -551,6 +544,34 @@ fn has_non_self_preference(member: Person) -> Bool {
   case member.preferences {
     Some(preferences) ->
       list.any(preferences, fn(preference) { preference.person_id != member.id })
+
+    None -> False
+  }
+}
+
+fn candidate_has_explicit_social_preferences(candidate: List(Person)) -> Bool {
+  case candidate {
+    [first, second] ->
+      member_has_explicit_preference_for(first, second.id)
+      || member_has_explicit_preference_for(second, first.id)
+
+    _ -> {
+      let teammate_ids =
+        set.from_list(list.map(candidate, fn(member) { member.id }))
+
+      list.any(candidate, fn(member) {
+        has_explicit_social_preferences(member, teammate_ids)
+      })
+    }
+  }
+}
+
+fn member_has_explicit_preference_for(member: Person, teammate_id: String) -> Bool {
+  case member.preferences {
+    Some(preferences) ->
+      list.any(preferences, fn(preference) {
+        preference.person_id == teammate_id
+      })
 
     None -> False
   }
