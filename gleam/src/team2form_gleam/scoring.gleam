@@ -181,7 +181,25 @@ fn calculate_task_preference_score(
 ) -> Float {
   case team {
     [] -> 0.0
-    [_, ..] ->
+
+    [member] ->
+      case task_preferences {
+        Some(preferences) -> dict_get_or(preferences, member.id, compat_default)
+        None -> compat_default
+      }
+
+    [first_member, second_member] ->
+      case task_preferences {
+        Some(preferences) -> {
+          let first_score = dict_get_or(preferences, first_member.id, compat_default)
+          let second_score = dict_get_or(preferences, second_member.id, compat_default)
+          math.sqrt(first_score *. second_score)
+        }
+
+        None -> compat_default
+      }
+
+    [_, _, ..] ->
       case task_preferences {
         Some(preferences) ->
           geometric_mean(
