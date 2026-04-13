@@ -1434,6 +1434,48 @@ pub fn calculate_team_quality_for_people(
   )
 }
 
+pub fn calculate_team_quality_summary_for_people(
+  task_skills task_skills: List(TaskSkill),
+  team team: List(Person),
+  alpha alpha: Option(Float),
+  beta beta: Option(Float),
+  gamma gamma: Option(Float),
+  delta delta: Option(Float),
+  similarities similarities: Option(List(Similarity)),
+  mode mode: Mode,
+  preset preset: Option(WeightPreset),
+  normalize_weights normalize_weights: Bool,
+  task_preferences task_preferences: Option(dict.Dict(String, Float)),
+  compat_task_preference_default compat_task_preference_default: Option(Float),
+  compat_social_preference_default compat_social_preference_default: Option(Float),
+) -> #(Float, Float, Float, dict.Dict(String, List(String))) {
+  let components =
+    calculate_team_quality_components_for_people(
+      task_skills: task_skills,
+      team: team,
+      alpha: alpha,
+      beta: beta,
+      gamma: gamma,
+      delta: delta,
+      similarities: similarities,
+      mode: mode,
+      preset: preset,
+      normalize_weights: normalize_weights,
+      task_preferences: task_preferences,
+      compat_task_preference_default: compat_task_preference_default,
+      compat_social_preference_default: compat_social_preference_default,
+      personality_score: None,
+      social_score: None,
+    )
+
+  #(
+    components.quality,
+    components.social_score,
+    components.weights.delta,
+    components.assignments,
+  )
+}
+
 pub fn calculate_team_quality(
   request: TeamQualityRequest,
   mode mode: Mode,

@@ -338,8 +338,8 @@ fn choose_best_candidate(
           _ -> None
         }
 
-      let quality =
-        scoring.calculate_team_quality_for_people(
+      let #(quality_score, social_score, delta_weight, assignments) =
+        scoring.calculate_team_quality_summary_for_people(
           task_skills: task.skills,
           team: candidate,
           alpha: request.alpha,
@@ -356,14 +356,11 @@ fn choose_best_candidate(
         )
       let adjusted_quality =
         case mode == Compat && has_team_social_preferences == False {
-          True ->
-            quality.quality
-            -. dict_get_float(quality.weights, "delta", 0.0) *. quality.social_score
-
-          False -> quality.quality
+          True -> quality_score -. delta_weight *. social_score
+          False -> quality_score
         }
       let assigned =
-        scoring.assigned_people_from_assignments(quality.assignments)
+        scoring.assigned_people_from_assignments(assignments)
       let team_result =
         TeamResult(task_id: task.id, people: assigned, quality: adjusted_quality)
 
@@ -555,13 +552,6 @@ fn has_explicit_social_preferences(
 }
 
 fn dict_get_int(mapping: dict.Dict(String, Int), key: String, fallback: Int) -> Int {
-  case dict.get(mapping, key) {
-    Ok(value) -> value
-    Error(Nil) -> fallback
-  }
-}
-
-fn dict_get_float(mapping: dict.Dict(String, Float), key: String, fallback: Float) -> Float {
   case dict.get(mapping, key) {
     Ok(value) -> value
     Error(Nil) -> fallback
