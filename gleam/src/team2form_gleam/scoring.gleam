@@ -415,19 +415,37 @@ pub fn team_personality_score(team: List(Person), mode mode: Mode) -> Float {
 
       case mode {
         Compat -> {
-          let best_compat_etj =
-            list.fold(team, 0.0, fn(best, member) {
-              float.max(best, compat_etj(member.personality))
+          let #(best_compat_etj, best_compat_introvert, female_count_int, male_count_int, total_int) =
+            list.fold(team, #(0.0, 0.0, 0, 0, 0), fn(state, member) {
+              let #(found_best_etj, found_best_introvert, found_female_count, found_male_count, found_total) =
+                state
+              let personality = member.personality
+              let next_best_etj = float.max(found_best_etj, compat_etj(personality))
+              let next_best_introvert =
+                float.max(found_best_introvert, compat_introvert(personality))
+
+              case member.gender {
+                Some(Female) ->
+                  #(next_best_etj, next_best_introvert, found_female_count + 1, found_male_count, found_total + 1)
+                Some(Male) ->
+                  #(next_best_etj, next_best_introvert, found_female_count, found_male_count + 1, found_total + 1)
+                None ->
+                  #(next_best_etj, next_best_introvert, found_female_count, found_male_count, found_total + 1)
+              }
             })
-          let best_compat_introvert =
-            list.fold(team, 0.0, fn(best, member) {
-              float.max(best, compat_introvert(member.personality))
-            })
+          let female_count = int.to_float(female_count_int)
+          let male_count = int.to_float(male_count_int)
+          let total = int.to_float(total_int)
+          let missing_count = total -. female_count -. male_count
+          let effective_female = female_count +. 0.5 *. missing_count
+          let effective_male = male_count +. 0.5 *. missing_count
+          let minority_fraction = float.min(effective_female, effective_male) /. total
+          let gender_bonus = 0.075 *. math.sin(pi *. minority_fraction)
 
           0.75 *. sn_stddev *. tf_stddev
           +. 0.2475 *. best_compat_etj
           +. 0.2475 *. best_compat_introvert
-          +. compat_gender_bonus(team)
+          +. gender_bonus
         }
 
         Paper -> {
