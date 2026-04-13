@@ -42,7 +42,7 @@ fn at_least_float_decoder(
 
 fn non_empty_string_decoder(expected: String) -> decode.Decoder(String) {
   decode.then(decode.string, fn(value) {
-    case string.length(value) > 0 {
+    case string.byte_size(value) > 0 {
       True -> decode.success(value)
       False -> decode.failure("", expected: expected)
     }
