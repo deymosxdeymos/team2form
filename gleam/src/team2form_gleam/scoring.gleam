@@ -247,22 +247,42 @@ pub fn team_social_score(
     }
 
     [_, _, ..] -> {
-      let teammate_ids = list.map(team, fn(member) { member.id })
+      let teammate_id_set =
+        team
+        |> list.map(fn(member) { member.id })
+        |> set.from_list
+      let team_size = list.length(team)
+      let team_size_float = int.to_float(team_size)
+      let teammate_count = team_size - 1
+
       let member_scores =
         list.map(team, fn(member) {
           let mapping = preference_lookup_person(member.preferences)
-          let total =
-            list.fold(teammate_ids, 0.0, fn(acc, teammate_id) {
-              let value =
-                case teammate_id == member.id {
-                  True -> 1.0
-                  False -> dict_get_or(mapping, teammate_id, compat_default)
-                }
+          let #(explicit_sum, explicit_count) =
+            list.fold(dict.to_list(mapping), #(0.0, 0), fn(state, entry) {
+              let #(found_sum, found_count) = state
+              let #(preferred_id, preferred_value) = entry
 
-              acc +. value
+              case preferred_id == member.id {
+                True -> state
+
+                False ->
+                  case set.contains(teammate_id_set, preferred_id) {
+                    True -> #(found_sum +. preferred_value, found_count + 1)
+                    False -> state
+                  }
+              }
             })
+          let missing_count_raw = teammate_count - explicit_count
+          let missing_count =
+            case missing_count_raw > 0 {
+              True -> missing_count_raw
+              False -> 0
+            }
+          let total =
+            1.0 +. explicit_sum +. compat_default *. int.to_float(missing_count)
 
-          total /. int.to_float(list.length(team))
+          total /. team_size_float
         })
 
       geometric_mean(member_scores)
