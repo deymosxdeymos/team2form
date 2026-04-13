@@ -202,10 +202,28 @@ pub fn social_preference_for_pair(
 ) -> Float {
   case member.id == teammate_id {
     True -> 1.0
-    False -> {
-      let mapping = preference_lookup_person(member.preferences)
-      dict_get_or(mapping, teammate_id, compat_default)
-    }
+
+    False ->
+      case member.preferences {
+        Some(preferences) -> {
+          let found =
+            list.fold(preferences, None, fn(state, preference) {
+              case state {
+                Some(_) -> state
+
+                None ->
+                  case preference.person_id == teammate_id {
+                    True -> Some(preference.preference)
+                    False -> None
+                  }
+              }
+            })
+
+          option.unwrap(found, compat_default)
+        }
+
+        None -> compat_default
+      }
   }
 }
 
