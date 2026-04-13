@@ -370,41 +370,42 @@ pub fn team_personality_score(team: List(Person), mode mode: Mode) -> Float {
     [_, _, ..] -> {
       let sn_values = list.map(team, fn(member) { member.personality.sn })
       let tf_values = list.map(team, fn(member) { member.personality.tf })
-      let best_compat_etj =
-        list.fold(team, 0.0, fn(best, member) {
-          float.max(best, compat_etj(member.personality))
-        })
-      let best_paper_etj =
-        list.fold(team, 0.0, fn(best, member) {
-          float.max(best, paper_etj(member.personality))
-        })
-      let best_compat_introvert =
-        list.fold(team, 0.0, fn(best, member) {
-          float.max(best, compat_introvert(member.personality))
-        })
-      let best_paper_introvert =
-        list.fold(team, 0.0, fn(best, member) {
-          float.max(best, paper_introvert(member.personality))
-        })
-      let declared_genders =
-        list.fold(team, set.new(), fn(found, member) {
-          case member.gender {
-            Some(gender) -> set.insert(found, gender)
-            None -> found
-          }
-        })
-
       let sn_stddev = population_stddev(sn_values)
       let tf_stddev = population_stddev(tf_values)
 
       case mode {
-        Compat ->
+        Compat -> {
+          let best_compat_etj =
+            list.fold(team, 0.0, fn(best, member) {
+              float.max(best, compat_etj(member.personality))
+            })
+          let best_compat_introvert =
+            list.fold(team, 0.0, fn(best, member) {
+              float.max(best, compat_introvert(member.personality))
+            })
+
           0.75 *. sn_stddev *. tf_stddev
           +. 0.2475 *. best_compat_etj
           +. 0.2475 *. best_compat_introvert
           +. compat_gender_bonus(team)
+        }
 
         Paper -> {
+          let best_paper_etj =
+            list.fold(team, 0.0, fn(best, member) {
+              float.max(best, paper_etj(member.personality))
+            })
+          let best_paper_introvert =
+            list.fold(team, 0.0, fn(best, member) {
+              float.max(best, paper_introvert(member.personality))
+            })
+          let declared_genders =
+            list.fold(team, set.new(), fn(found, member) {
+              case member.gender {
+                Some(gender) -> set.insert(found, gender)
+                None -> found
+              }
+            })
           let gender_bonus =
             case set.size(declared_genders) > 1 {
               True -> 0.1
