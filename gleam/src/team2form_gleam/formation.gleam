@@ -98,6 +98,19 @@ pub fn form_teams(
           Compat -> list.any(request.people, has_non_self_preference)
           _ -> False
         }
+      let people_with_non_self_preferences =
+        case mode {
+          Compat ->
+            request.people
+            |> list.fold(set.new(), fn(found, person) {
+              case has_non_self_preference(person) {
+                True -> set.insert(found, person.id)
+                False -> found
+              }
+            })
+
+          _ -> set.new()
+        }
       let #(search_outcome, _memo) =
         explore_tasks(
           tasks: task_evals,
@@ -108,6 +121,7 @@ pub fn form_teams(
           normalize_weights: normalize_weights,
           max_candidate_teams: max_candidate_teams,
           request_has_non_self_preferences: request_has_non_self_preferences,
+          people_with_non_self_preferences: people_with_non_self_preferences,
           memo: dict.new(),
         )
 
@@ -225,6 +239,7 @@ fn explore_tasks(
   normalize_weights normalize_weights: Bool,
   max_candidate_teams max_candidate_teams: Option(Int),
   request_has_non_self_preferences request_has_non_self_preferences: Bool,
+  people_with_non_self_preferences people_with_non_self_preferences: set.Set(String),
   memo memo: dict.Dict(#(String, String), Option(SearchOutcome)),
 ) -> #(
   Option(SearchOutcome),
@@ -259,6 +274,7 @@ fn explore_tasks(
               normalize_weights: normalize_weights,
               max_candidate_teams: max_candidate_teams,
               request_has_non_self_preferences: request_has_non_self_preferences,
+              people_with_non_self_preferences: people_with_non_self_preferences,
               task_preferences: task_preferences,
               task_preference_default: task_preference_default,
               best: None,
@@ -284,6 +300,7 @@ fn choose_best_candidate(
   normalize_weights normalize_weights: Bool,
   max_candidate_teams max_candidate_teams: Option(Int),
   request_has_non_self_preferences request_has_non_self_preferences: Bool,
+  people_with_non_self_preferences people_with_non_self_preferences: set.Set(String),
   task_preferences task_preferences: Option(dict.Dict(String, Float)),
   task_preference_default task_preference_default: Option(Float),
   best best: Option(SearchOutcome),
@@ -304,10 +321,12 @@ fn choose_best_candidate(
               False -> False
 
               True -> {
-                let has_any_non_self_preferences =
-                  list.any(candidate, has_non_self_preference)
+                let candidate_has_non_self_source =
+                  list.any(candidate, fn(member) {
+                    set.contains(people_with_non_self_preferences, member.id)
+                  })
 
-                case has_any_non_self_preferences {
+                case candidate_has_non_self_source {
                   False -> False
 
                   True -> {
@@ -384,6 +403,7 @@ fn choose_best_candidate(
                 normalize_weights: normalize_weights,
                 max_candidate_teams: max_candidate_teams,
                 request_has_non_self_preferences: request_has_non_self_preferences,
+                people_with_non_self_preferences: people_with_non_self_preferences,
                 memo: memo,
               )
             let candidate_outcome =
@@ -413,6 +433,7 @@ fn choose_best_candidate(
         normalize_weights: normalize_weights,
         max_candidate_teams: max_candidate_teams,
         request_has_non_self_preferences: request_has_non_self_preferences,
+        people_with_non_self_preferences: people_with_non_self_preferences,
         task_preferences: task_preferences,
         task_preference_default: task_preference_default,
         best: new_best,
