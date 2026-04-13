@@ -55,11 +55,23 @@ fn list_min_length_decoder(
   expected expected: String,
 ) -> decode.Decoder(List(a)) {
   decode.then(decode.list(of: inner), fn(values) {
-    case list.length(values) >= min_length {
+    case list_has_min_length(values, min_length) {
       True -> decode.success(values)
       False -> decode.failure([], expected: expected)
     }
   })
+}
+
+fn list_has_min_length(values: List(a), min_length: Int) -> Bool {
+  case min_length <= 0 {
+    True -> True
+
+    False ->
+      case values {
+        [] -> False
+        [_, ..rest] -> list_has_min_length(rest, min_length - 1)
+      }
+  }
 }
 
 fn positive_int_decoder(minimum: Int, expected: String) -> decode.Decoder(Int) {
