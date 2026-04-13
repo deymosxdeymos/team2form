@@ -572,21 +572,31 @@ pub fn assign_task_skills(
                 Some(assignments) -> AssignmentResult(assignments: assignments, skill_score: 1.0)
 
                 None ->
-                  case task_count == 3 && team_count == 3 {
+                  case task_count == 2 && team_count == 2 {
                     True ->
-                      assign_task_skills_unique_compat_3x3(
+                      assign_task_skills_unique_compat_2x2(
                         task_skills,
                         team,
                         similarity_index: similarity_index,
                       )
 
                     False ->
-                      assign_task_skills_unique(
-                        task_skills,
-                        team,
-                        mode: mode,
-                        similarity_index: similarity_index,
-                      )
+                      case task_count == 3 && team_count == 3 {
+                        True ->
+                          assign_task_skills_unique_compat_3x3(
+                            task_skills,
+                            team,
+                            similarity_index: similarity_index,
+                          )
+
+                        False ->
+                          assign_task_skills_unique(
+                            task_skills,
+                            team,
+                            mode: mode,
+                            similarity_index: similarity_index,
+                          )
+                      }
                   }
               }
 
@@ -769,6 +779,73 @@ fn member_has_perfect_skill(member: Person, task_skill_id: String) -> Bool {
   })
 }
 
+fn assign_task_skills_unique_compat_2x2(
+  task_skills: List(TaskSkill),
+  team: List(Person),
+  similarity_index similarity_index: dict.Dict(#(String, String), Float),
+) -> AssignmentResult {
+  case task_skills, team {
+    [task0, task1], [member0, member1] -> {
+      let s00 =
+        coverage_for_person_and_task_skill(
+          member0,
+          task0,
+          mode: Compat,
+          similarity_index: similarity_index,
+        )
+      let s01 =
+        coverage_for_person_and_task_skill(
+          member0,
+          task1,
+          mode: Compat,
+          similarity_index: similarity_index,
+        )
+      let s10 =
+        coverage_for_person_and_task_skill(
+          member1,
+          task0,
+          mode: Compat,
+          similarity_index: similarity_index,
+        )
+      let s11 =
+        coverage_for_person_and_task_skill(
+          member1,
+          task1,
+          mode: Compat,
+          similarity_index: similarity_index,
+        )
+
+      let p01 = compat_permutation_log_score2(s00, s11)
+      let p10 = compat_permutation_log_score2(s01, s10)
+      let best_permutation =
+        case p10 >. p01 {
+          True -> #(1, 0)
+          False -> #(0, 1)
+        }
+      let #(task_for_member0, task_for_member1) = best_permutation
+      let assignments =
+        dict.new()
+        |> dict.insert(member0.id, [task_skill_id_at_2(task0, task1, task_for_member0)])
+        |> dict.insert(member1.id, [task_skill_id_at_2(task0, task1, task_for_member1)])
+      let member_scores =
+        [
+          task_score_at_2(s00, s01, task_for_member0),
+          task_score_at_2(s10, s11, task_for_member1),
+        ]
+
+      AssignmentResult(assignments:, skill_score: geometric_mean(member_scores))
+    }
+
+    _, _ ->
+      assign_task_skills_unique(
+        task_skills,
+        team,
+        mode: Compat,
+        similarity_index: similarity_index,
+      )
+  }
+}
+
 fn assign_task_skills_unique_compat_3x3(
   task_skills: List(TaskSkill),
   team: List(Person),
@@ -892,10 +969,24 @@ fn assign_task_skills_unique_compat_3x3(
   }
 }
 
+fn compat_permutation_log_score2(a: Float, b: Float) -> Float {
+  case a <=. 0.0 || b <=. 0.0 {
+    True -> -1.0e30
+    False -> safe_log(a) +. safe_log(b)
+  }
+}
+
 fn compat_permutation_log_score(a: Float, b: Float, c: Float) -> Float {
   case a <=. 0.0 || b <=. 0.0 || c <=. 0.0 {
     True -> -1.0e30
     False -> safe_log(a) +. safe_log(b) +. safe_log(c)
+  }
+}
+
+fn task_skill_id_at_2(task0: TaskSkill, task1: TaskSkill, index: Int) -> String {
+  case index {
+    0 -> task0.id
+    _ -> task1.id
   }
 }
 
@@ -904,6 +995,13 @@ fn task_skill_id_at_3(task0: TaskSkill, task1: TaskSkill, task2: TaskSkill, inde
     0 -> task0.id
     1 -> task1.id
     _ -> task2.id
+  }
+}
+
+fn task_score_at_2(score0: Float, score1: Float, index: Int) -> Float {
+  case index {
+    0 -> score0
+    _ -> score1
   }
 }
 
