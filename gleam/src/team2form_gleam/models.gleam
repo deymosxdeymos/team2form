@@ -348,18 +348,107 @@ fn validate_team_members(
 ) -> Result(Nil, ValidationError) {
   list.fold(team, Ok(Nil), fn(current, member) {
     use Nil <- result.try(current)
-    let duplicate_preferences = duplicate_person_preference_person_ids(member.preferences)
-    case duplicate_preferences {
-      [_, ..] -> Error(DuplicatePersonPreferenceIds(person_id: member.id, person_ids: duplicate_preferences))
-      [] -> {
-        let unknown_preferences = unknown_person_preference_person_ids(member.preferences, member_ids)
-        case unknown_preferences {
-          [] -> Ok(Nil)
-          [_, ..] -> Error(UnknownPersonPreferencePersonIds(person_id: member.id, person_ids: unknown_preferences))
+    validate_member_preferences(member.id, member.preferences, member_ids)
+  })
+}
+
+fn validate_member_preferences(
+  member_id: String,
+  preferences: Option(List(PersonPreference)),
+  member_ids: set.Set(String),
+) -> Result(Nil, ValidationError) {
+  case preferences {
+    None -> Ok(Nil)
+
+    Some([]) -> Ok(Nil)
+
+    Some([first]) ->
+      case set.contains(member_ids, first.person_id) {
+        True -> Ok(Nil)
+        False ->
+          Error(
+            UnknownPersonPreferencePersonIds(
+              person_id: member_id,
+              person_ids: [first.person_id],
+            ),
+          )
+      }
+
+    Some([first, second]) ->
+      case first.person_id == second.person_id {
+        True ->
+          Error(
+            DuplicatePersonPreferenceIds(
+              person_id: member_id,
+              person_ids: [first.person_id],
+            ),
+          )
+
+        False -> {
+          let unknown_preferences =
+            []
+            |> prepend_unknown_preference_id(first, member_ids)
+            |> prepend_unknown_preference_id(second, member_ids)
+            |> list.reverse
+            |> list.sort(string.compare)
+
+          case unknown_preferences {
+            [] -> Ok(Nil)
+
+            [_, ..] ->
+              Error(
+                UnknownPersonPreferencePersonIds(
+                  person_id: member_id,
+                  person_ids: unknown_preferences,
+                ),
+              )
+          }
+        }
+      }
+
+    Some([_, _, ..]) -> {
+      let duplicate_preferences =
+        duplicate_person_preference_person_ids(preferences)
+
+      case duplicate_preferences {
+        [_, ..] ->
+          Error(
+            DuplicatePersonPreferenceIds(
+              person_id: member_id,
+              person_ids: duplicate_preferences,
+            ),
+          )
+
+        [] -> {
+          let unknown_preferences =
+            unknown_person_preference_person_ids(preferences, member_ids)
+
+          case unknown_preferences {
+            [] -> Ok(Nil)
+
+            [_, ..] ->
+              Error(
+                UnknownPersonPreferencePersonIds(
+                  person_id: member_id,
+                  person_ids: unknown_preferences,
+                ),
+              )
+          }
         }
       }
     }
-  })
+  }
+}
+
+fn prepend_unknown_preference_id(
+  found: List(String),
+  preference: PersonPreference,
+  member_ids: set.Set(String),
+) -> List(String) {
+  case set.contains(member_ids, preference.person_id) {
+    True -> found
+    False -> [preference.person_id, ..found]
+  }
 }
 
 pub fn validation_error_to_string(error: ValidationError) -> String {
