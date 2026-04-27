@@ -240,12 +240,12 @@ fn explore_tasks(
   max_candidate_teams max_candidate_teams: Option(Int),
   request_has_non_self_preferences request_has_non_self_preferences: Bool,
   people_with_non_self_preferences people_with_non_self_preferences: set.Set(String),
-  memo memo: dict.Dict(#(String, String), Option(SearchOutcome)),
+  memo memo: dict.Dict(#(Int, String), Option(SearchOutcome)),
 ) -> #(
   Option(SearchOutcome),
-  dict.Dict(#(String, String), Option(SearchOutcome)),
+  dict.Dict(#(Int, String), Option(SearchOutcome)),
 ) {
-  let cache_key = #(tasks_signature(tasks), people_signature(people))
+  let cache_key = #(list.length(tasks), people_signature(people))
 
   case dict.get(memo, cache_key) {
     Ok(cached) -> #(cached, memo)
@@ -305,10 +305,10 @@ fn choose_best_candidate(
   task_preference_default task_preference_default: Option(Float),
   best best: Option(SearchOutcome),
   all_people all_people: List(Person),
-  memo memo: dict.Dict(#(String, String), Option(SearchOutcome)),
+  memo memo: dict.Dict(#(Int, String), Option(SearchOutcome)),
 ) -> #(
   Option(SearchOutcome),
-  dict.Dict(#(String, String), Option(SearchOutcome)),
+  dict.Dict(#(Int, String), Option(SearchOutcome)),
 ) {
   case candidates {
     [] -> #(best, memo)
@@ -605,11 +605,3 @@ fn people_signature(people: List(Person)) -> String {
   |> string.join(with: ",")
 }
 
-fn tasks_signature(tasks: List(TaskEval)) -> String {
-  tasks
-  |> list.map(fn(task_eval) {
-    let TaskEval(task:, ..) = task_eval
-    task.id
-  })
-  |> string.join(with: ",")
-}

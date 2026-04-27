@@ -5,7 +5,7 @@
 - **De-prioritize for now:** guarded no-social `team_social_score` shortcut (`compat_default == 0`) and formation social-score override plumbing for no-non-self requests — previously near-miss, but current reruns regressed materially.
 - **De-prioritize for now:** additional TeamQuality validator structure rewrites (one-pass member-id collection, list-backed membership checks, recursion-vs-fold, set/dict swaps, tiny 2-member duplicate branches). They do not reproduce the big gain from run #565.
   - 2-preference known-known early return improved quality ratio in one rerun but regressed combined via form drift; only revisit if paired with a reliable form-side win.
-- **De-prioritize for now:** decode/encode-only FFI shortcuts (strict fast decoders, cached decoders, direct JSON encoding, fully validated JS TeamQuality fast path). Repeatedly unstable or negative on combined metric.
-  - Manual JS TeamQuality fast decode + fallback showed directional quality improvement but still far above keep threshold; only revisit as a broader decode overhaul (TeamQuality + Formation, lower allocation conversion) with confirmation reruns.
+- **Active winning direction:** manual JS fast decode with strict fallback for both TeamQuality + Formation (run #615/#617). Next refinements should target lower-allocation conversion and shared helper reuse, while preserving validator/fallback correctness.
 - **De-prioritize for now:** candidate-prioritization heuristics in formation exact search (including perfect-skill candidate promotion); added ordering overhead has not translated into form wins.
 - **Process note:** benchmark variance remains high (especially form run2). Favor changes with clearly larger expected effect size and require confirmation reruns before trusting small deltas.
+- **Process guardrail:** always run `gleam build` before `scripts/bench_autoresearch.py`; `gleam check` alone can leave stale JS artifacts and invalidate benchmark comparisons.
