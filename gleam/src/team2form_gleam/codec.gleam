@@ -3,10 +3,11 @@ import gleam/dynamic/decode
 import gleam/int
 import gleam/json
 import gleam/list
-import gleam/option.{None}
+import gleam/option.{None, Some}
 import gleam/result
 import gleam/string
 import team2form_gleam/models
+import team2form_gleam/quality_decode_fast
 
 fn number_decoder() -> decode.Decoder(Float) {
   decode.one_of(
@@ -298,7 +299,13 @@ pub fn decode_formation_request(source: String) -> Result(models.FormationReques
 }
 
 pub fn decode_team_quality_request(source: String) -> Result(models.TeamQualityRequest, String) {
-  use request <- result.try(parse_json(source, team_quality_request_decoder()))
+  let decoded_request =
+    case quality_decode_fast.decode_team_quality_request_fast(source) {
+      Some(request) -> Ok(request)
+      None -> parse_json(source, team_quality_request_decoder())
+    }
+
+  use request <- result.try(decoded_request)
   case models.validate_team_quality_request(request) {
     Ok(valid) -> Ok(valid)
     Error(validation_error) ->
