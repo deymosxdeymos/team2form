@@ -6,6 +6,7 @@ import gleam/list
 import gleam/option.{None, Some}
 import gleam/result
 import gleam/string
+import team2form_gleam/formation_decode_fast
 import team2form_gleam/models
 import team2form_gleam/quality_decode_fast
 
@@ -290,7 +291,13 @@ fn parse_json(source: String, decoder: decode.Decoder(a)) -> Result(a, String) {
 }
 
 pub fn decode_formation_request(source: String) -> Result(models.FormationRequest, String) {
-  use request <- result.try(parse_json(source, formation_request_decoder()))
+  let decoded_request =
+    case formation_decode_fast.decode_formation_request_fast(source) {
+      Some(request) -> Ok(request)
+      None -> parse_json(source, formation_request_decoder())
+    }
+
+  use request <- result.try(decoded_request)
   case models.validate_formation_request(request) {
     Ok(valid) -> Ok(valid)
     Error(validation_error) ->

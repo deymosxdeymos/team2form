@@ -6,9 +6,13 @@ import {
   Personality,
   PersonSkill,
   PersonPreference,
+  Person,
   TeamMember,
   TaskSkill,
+  TaskPreference,
+  Task,
   Similarity,
+  FormationRequest,
   TeamQualityRequest,
 } from "./models.mjs"
 
@@ -277,6 +281,186 @@ export function decode_team_quality_request_fast(source) {
   }
 
   const parsed = parseTeamQualityRequest(raw)
+  if (parsed === null) {
+    return NONE
+  }
+
+  return new Some(parsed)
+}
+
+function integerAtLeast(value, minimum) {
+  return Number.isInteger(value) && value >= minimum
+}
+
+function parseTaskPreferences(rawPreferences) {
+  if (rawPreferences === undefined || rawPreferences === null) {
+    return NONE
+  }
+  if (!Array.isArray(rawPreferences)) {
+    return null
+  }
+
+  const parsed = []
+  for (let i = 0; i < rawPreferences.length; i += 1) {
+    const preference = rawPreferences[i]
+    if (preference === null || typeof preference !== "object") {
+      return null
+    }
+    if (!nonEmptyString(preference.personId) || !inRange(preference.preference, 0, 1)) {
+      return null
+    }
+
+    parsed.push(new TaskPreference(preference.personId, preference.preference))
+  }
+
+  return new Some(toList(parsed))
+}
+
+function parsePeople(rawPeople) {
+  if (!Array.isArray(rawPeople) || rawPeople.length < 2) {
+    return null
+  }
+
+  const parsed = []
+  for (let i = 0; i < rawPeople.length; i += 1) {
+    const person = rawPeople[i]
+    if (person === null || typeof person !== "object") {
+      return null
+    }
+    if (!nonEmptyString(person.id)) {
+      return null
+    }
+
+    const gender = parseGender(person.gender)
+    if (gender === null) {
+      return null
+    }
+
+    const personality = parsePersonality(person.personality)
+    if (personality === null) {
+      return null
+    }
+
+    const skills = parsePersonSkills(person.skills)
+    if (skills === null) {
+      return null
+    }
+
+    const preferences = parsePersonPreferences(person.preferences)
+    if (preferences === null) {
+      return null
+    }
+
+    parsed.push(new Person(person.id, gender, personality, skills, preferences))
+  }
+
+  return toList(parsed)
+}
+
+function parseTasks(rawTasks) {
+  if (!Array.isArray(rawTasks) || rawTasks.length < 1) {
+    return null
+  }
+
+  const parsed = []
+  for (let i = 0; i < rawTasks.length; i += 1) {
+    const task = rawTasks[i]
+    if (task === null || typeof task !== "object") {
+      return null
+    }
+    if (!nonEmptyString(task.id)) {
+      return null
+    }
+    if (!integerAtLeast(task.teamSize, 2)) {
+      return null
+    }
+
+    const skills = parseTaskSkills(task.skills)
+    if (skills === null) {
+      return null
+    }
+
+    const preferences = parseTaskPreferences(task.preferences)
+    if (preferences === null) {
+      return null
+    }
+
+    parsed.push(new Task(task.id, task.teamSize, skills, preferences))
+  }
+
+  return toList(parsed)
+}
+
+function parseInitRandom(value) {
+  if (value === undefined) {
+    return false
+  }
+  return value === true || value === false ? value : null
+}
+
+function parseFormationRequest(raw) {
+  if (raw === null || typeof raw !== "object") {
+    return null
+  }
+
+  const people = parsePeople(raw.people)
+  if (people === null) {
+    return null
+  }
+
+  const tasks = parseTasks(raw.tasks)
+  if (tasks === null) {
+    return null
+  }
+
+  const initRandom = parseInitRandom(raw.initRandom)
+  if (initRandom === null) {
+    return null
+  }
+
+  const alpha = optionalBounded01(raw.alpha)
+  if (alpha === null) {
+    return null
+  }
+  const beta = optionalBounded01(raw.beta)
+  if (beta === null) {
+    return null
+  }
+  const gamma = optionalBounded01(raw.gamma)
+  if (gamma === null) {
+    return null
+  }
+  const delta = optionalBounded01(raw.delta)
+  if (delta === null) {
+    return null
+  }
+
+  const similarities = parseSimilarities(raw.similarities)
+  if (similarities === null) {
+    return null
+  }
+
+  return new FormationRequest(
+    people,
+    tasks,
+    initRandom,
+    alpha,
+    beta,
+    gamma,
+    delta,
+    similarities,
+  )
+}
+
+export function decode_formation_request_fast(source) {
+  let raw
+  try {
+    raw = JSON.parse(source)
+  } catch {
+    return NONE
+  }
+
+  const parsed = parseFormationRequest(raw)
   if (parsed === null) {
     return NONE
   }
