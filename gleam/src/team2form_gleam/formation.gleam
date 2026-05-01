@@ -612,6 +612,39 @@ fn people_signature(people: List(Person)) -> String {
     [first, second] -> first.id <> "," <> second.id
     [first, second, third] -> first.id <> "," <> second.id <> "," <> third.id
 
+    [first, second, third, fourth] ->
+      first.id
+      <> ","
+      <> second.id
+      <> ","
+      <> third.id
+      <> ","
+      <> fourth.id
+
+    [first, second, third, fourth, fifth] ->
+      first.id
+      <> ","
+      <> second.id
+      <> ","
+      <> third.id
+      <> ","
+      <> fourth.id
+      <> ","
+      <> fifth.id
+
+    [first, second, third, fourth, fifth, sixth] ->
+      first.id
+      <> ","
+      <> second.id
+      <> ","
+      <> third.id
+      <> ","
+      <> fourth.id
+      <> ","
+      <> fifth.id
+      <> ","
+      <> sixth.id
+
     _ ->
       people
       |> list.map(fn(person) { person.id })
