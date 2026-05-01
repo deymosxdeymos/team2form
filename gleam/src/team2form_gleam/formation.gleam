@@ -114,6 +114,7 @@ pub fn form_teams(
       let #(search_outcome, _memo) =
         explore_tasks(
           tasks: task_evals,
+          remaining_task_count: list.length(task_evals),
           people: request.people,
           request: request,
           mode: mode,
@@ -232,6 +233,7 @@ fn build_task_evals(tasks: List(models.Task), mode: Mode) -> List(TaskEval) {
 
 fn explore_tasks(
   tasks tasks: List(TaskEval),
+  remaining_task_count remaining_task_count: Int,
   people people: List(Person),
   request request: FormationRequest,
   mode mode: Mode,
@@ -245,7 +247,7 @@ fn explore_tasks(
   Option(SearchOutcome),
   dict.Dict(#(Int, String), Option(SearchOutcome)),
 ) {
-  let cache_key = #(list.length(tasks), people_signature(people))
+  let cache_key = #(remaining_task_count, people_signature(people))
 
   case dict.get(memo, cache_key) {
     Ok(cached) -> #(cached, memo)
@@ -267,6 +269,7 @@ fn explore_tasks(
             choose_best_candidate(
               candidates: candidates,
               rest_tasks: rest_tasks,
+              remaining_task_count: remaining_task_count,
               request: request,
               task: task,
               mode: mode,
@@ -293,6 +296,7 @@ fn explore_tasks(
 fn choose_best_candidate(
   candidates candidates: List(List(Person)),
   rest_tasks rest_tasks: List(TaskEval),
+  remaining_task_count remaining_task_count: Int,
   request request: FormationRequest,
   task task: models.Task,
   mode mode: Mode,
@@ -389,6 +393,7 @@ fn choose_best_candidate(
             let #(child_outcome, memo_after) =
               explore_tasks(
                 tasks: rest_tasks,
+                remaining_task_count: remaining_task_count - 1,
                 people: remaining_people,
                 request: request,
                 mode: mode,
@@ -419,6 +424,7 @@ fn choose_best_candidate(
       choose_best_candidate(
         candidates: rest_candidates,
         rest_tasks: rest_tasks,
+        remaining_task_count: remaining_task_count,
         request: request,
         task: task,
         mode: mode,
@@ -600,8 +606,16 @@ fn dict_get_int(mapping: dict.Dict(String, Int), key: String, fallback: Int) -> 
 }
 
 fn people_signature(people: List(Person)) -> String {
-  people
-  |> list.map(fn(person) { person.id })
-  |> string.join(with: ",")
+  case people {
+    [] -> ""
+    [first] -> first.id
+    [first, second] -> first.id <> "," <> second.id
+    [first, second, third] -> first.id <> "," <> second.id <> "," <> third.id
+
+    _ ->
+      people
+      |> list.map(fn(person) { person.id })
+      |> string.join(with: ",")
+  }
 }
 
