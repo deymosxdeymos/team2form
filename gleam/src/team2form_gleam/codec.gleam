@@ -1,14 +1,13 @@
-import gleam/dict
 import gleam/dynamic/decode
 import gleam/int
 import gleam/json
-import gleam/list
 import gleam/option.{None, Some}
 import gleam/result
 import gleam/string
 import team2form_gleam/formation_decode_fast
 import team2form_gleam/models
 import team2form_gleam/quality_decode_fast
+import team2form_gleam/quality_encode_fast
 
 fn number_decoder() -> decode.Decoder(Float) {
   decode.one_of(
@@ -324,36 +323,8 @@ fn encode_string_list(values: List(String)) -> json.Json {
   json.array(from: values, of: json.string)
 }
 
-fn encode_assignments(assignments: dict.Dict(String, List(String))) -> json.Json {
-  assignments
-  |> dict.to_list
-  |> list.map(fn(entry) {
-    let #(person_id, skill_ids) = entry
-    #(person_id, encode_string_list(skill_ids))
-  })
-  |> json.object
-}
-
 pub fn encode_quality_breakdown(payload: models.QualityBreakdown) -> String {
-  json.object([
-    #("quality", json.float(payload.quality)),
-    #("skillScore", json.float(payload.skill_score)),
-    #("personalityScore", json.float(payload.personality_score)),
-    #("taskPreferenceScore", json.float(payload.task_preference_score)),
-    #("socialScore", json.float(payload.social_score)),
-    #(
-      "weights",
-      payload.weights
-      |> dict.to_list
-      |> list.map(fn(entry) {
-        let #(name, value) = entry
-        #(name, json.float(value))
-      })
-      |> json.object,
-    ),
-    #("assignments", encode_assignments(payload.assignments)),
-  ])
-  |> json.to_string
+  quality_encode_fast.encode_quality_breakdown_fast(payload)
 }
 
 fn encode_assigned_person(person: models.AssignedPerson) -> json.Json {
