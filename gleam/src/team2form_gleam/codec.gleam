@@ -291,32 +291,32 @@ fn parse_json(source: String, decoder: decode.Decoder(a)) -> Result(a, String) {
 }
 
 pub fn decode_formation_request(source: String) -> Result(models.FormationRequest, String) {
-  let decoded_request =
-    case formation_decode_fast.decode_formation_request_fast(source) {
-      Some(request) -> Ok(request)
-      None -> parse_json(source, formation_request_decoder())
-    }
+  case formation_decode_fast.decode_formation_request_fast(source) {
+    Some(request) -> Ok(request)
 
-  use request <- result.try(decoded_request)
-  case models.validate_formation_request(request) {
-    Ok(valid) -> Ok(valid)
-    Error(validation_error) ->
-      Error(models.validation_error_to_string(validation_error))
+    None -> {
+      use request <- result.try(parse_json(source, formation_request_decoder()))
+      case models.validate_formation_request(request) {
+        Ok(valid) -> Ok(valid)
+        Error(validation_error) ->
+          Error(models.validation_error_to_string(validation_error))
+      }
+    }
   }
 }
 
 pub fn decode_team_quality_request(source: String) -> Result(models.TeamQualityRequest, String) {
-  let decoded_request =
-    case quality_decode_fast.decode_team_quality_request_fast(source) {
-      Some(request) -> Ok(request)
-      None -> parse_json(source, team_quality_request_decoder())
-    }
+  case quality_decode_fast.decode_team_quality_request_fast(source) {
+    Some(request) -> Ok(request)
 
-  use request <- result.try(decoded_request)
-  case models.validate_team_quality_request(request) {
-    Ok(valid) -> Ok(valid)
-    Error(validation_error) ->
-      Error(models.validation_error_to_string(validation_error))
+    None -> {
+      use request <- result.try(parse_json(source, team_quality_request_decoder()))
+      case models.validate_team_quality_request(request) {
+        Ok(valid) -> Ok(valid)
+        Error(validation_error) ->
+          Error(models.validation_error_to_string(validation_error))
+      }
+    }
   }
 }
 
