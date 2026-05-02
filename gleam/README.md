@@ -1,22 +1,12 @@
-# team2form_gleam
+# team2form
 
-Minimal Gleam port of the Python `team2form` project.
-
-## Scope (first pass)
+Gleam/JavaScript implementation of the Edu2Com-compatible team formation model.
 
 - Core domain models and validation
 - Team quality scoring
-- Exact (simple) team formation search
+- Exact and capped team formation search
 - CLI wrapper (Node)
 - HTTP API wrapper (Node)
-
-This pass intentionally keeps the implementation simple.
-
-## Known gaps vs Python
-
-- No advanced candidate-shortlisting heuristics.
-- No greedy+improve hybrid pipeline from Python; this version uses a straightforward exact search.
-- No caching/performance micro-optimizations yet.
 
 ## Build
 
@@ -36,10 +26,11 @@ node scripts/cli.mjs quality ../examples/team-quality.json --mode compat --prese
 node scripts/cli.mjs form ../examples/team-formation.json --mode compat --preset live_compat
 ```
 
-## Parity check against Python
+## Test
 
 ```bash
-uv run python ../scripts/compare_gleam.py
+gleam test
+node ../scripts/http_smoke_gleam.mjs
 ```
 
 ## API
@@ -59,5 +50,5 @@ unless `TEAM2FORM_MAX_CANDIDATE_TEAMS=none` is set.
 ## HTTP smoke check
 
 ```bash
-uv run python ../scripts/http_smoke_gleam.py
+node ../scripts/http_smoke_gleam.mjs
 ```

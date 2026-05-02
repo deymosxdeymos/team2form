@@ -4,8 +4,10 @@
   "type": "module",
   "scripts": {
     "build": "gleam build",
+    "test": "gleam test",
     "quality": "node scripts/cli.mjs quality",
     "form": "node scripts/cli.mjs form",
-    "api": "node scripts/server.mjs"
+    "api": "node scripts/server.mjs",
+    "smoke": "node ../scripts/http_smoke_gleam.mjs"
   }
 }
