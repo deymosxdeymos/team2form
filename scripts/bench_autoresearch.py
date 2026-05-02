@@ -136,10 +136,13 @@ def run_gleam_cli(
     *,
     mode: str = 'compat',
     preset: str | None = 'live_compat',
+    max_candidate_teams: int | None = None,
 ) -> dict:
     args = ['node', str(GLEAM_CLI), command, str(payload_path), '--mode', mode]
     if preset is not None:
         args.extend(['--preset', preset])
+    if max_candidate_teams is not None:
+        args.extend(['--max-candidate-teams', str(max_candidate_teams)])
     output = subprocess.check_output(args, cwd=ROOT, text=True)
     return json.loads(output)
 
@@ -175,9 +178,37 @@ def check_quality_parity(payload_path: Path) -> None:
         )
 
 
-def check_form_parity(payload_path: Path) -> None:
-    py = run_python_cli('form', payload_path)
-    gl = run_gleam_cli('form', payload_path)
+def check_form_parity(
+    payload_path: Path,
+    *,
+    max_candidate_teams: int | None = None,
+) -> None:
+    if max_candidate_teams is None:
+        py = run_python_cli('form', payload_path)
+        gl = run_gleam_cli('form', payload_path)
+    else:
+        payload = json.loads(payload_path.read_text())
+        request = FormationRequest.model_validate(payload)
+        py_response = form_teams(
+            request,
+            mode=Mode.COMPAT,
+            preset=WeightPreset.LIVE_COMPAT,
+            max_candidate_teams=max_candidate_teams,
+        )
+        py = {
+            'teams': [
+                {
+                    'taskId': team.task_id,
+                    'quality': team.quality,
+                    'people': [
+                        {'id': person.id, 'skillIds': person.skill_ids}
+                        for person in team.people
+                    ],
+                }
+                for team in py_response.teams
+            ]
+        }
+        gl = run_gleam_cli('form', payload_path, max_candidate_teams=max_candidate_teams)
 
     py_by_task = {team['taskId']: team for team in py['teams']}
     gl_by_task = {team['taskId']: team for team in gl['teams']}
@@ -215,11 +246,17 @@ def benchmark_python_form(
     mode: Mode,
     preset: WeightPreset,
     iterations: int,
+    max_candidate_teams: int | None = None,
 ) -> float:
     start = time.perf_counter_ns()
     for _ in range(iterations):
         request = FormationRequest.model_validate_json(payload_json)
-        form_teams(request, mode=mode, preset=preset)
+        form_teams(
+            request,
+            mode=mode,
+            preset=preset,
+            max_candidate_teams=max_candidate_teams,
+        )
     elapsed_ms = (time.perf_counter_ns() - start) / 1_000_000
     return elapsed_ms / iterations
 
@@ -231,6 +268,7 @@ def benchmark_gleam(
     iterations: int,
     mode: str = 'compat',
     preset: str = 'live_compat',
+    max_candidate_teams: int | None = None,
 ) -> float:
     args = [
         'node',
@@ -240,6 +278,7 @@ def benchmark_gleam(
         str(iterations),
         mode,
         preset,
+        str(max_candidate_teams) if max_candidate_teams is not None else 'none',
     ]
     output = subprocess.check_output(args, cwd=ROOT, text=True)
     parsed = json.loads(output)
@@ -285,19 +324,24 @@ def main() -> None:
         json.loads((ROOT / 'examples' / 'team-quality.json').read_text()),
         make_quality_payload(team_size=8),
     ]
-    form_payloads = [
-        json.loads((ROOT / 'examples' / 'team-formation.json').read_text()),
-        make_form_payload(people_count=9, tasks_count=3),
+    form_payloads: list[tuple[dict, int | None]] = [
+        (json.loads((ROOT / 'examples' / 'team-formation.json').read_text()), None),
+        (make_form_payload(people_count=9, tasks_count=3), None),
+        (make_form_payload(people_count=12, tasks_count=3), 10),
     ]
 
     quality_paths = [write_payload(payload) for payload in quality_payloads]
-    form_paths = [write_payload(payload) for payload in form_payloads]
+    form_paths = [write_payload(payload) for payload, _ in form_payloads]
 
     try:
         for path in quality_paths:
             check_quality_parity(path)
-        for path in form_paths:
-            check_form_parity(path)
+        for (_, max_candidate_teams), path in zip(
+            form_payloads,
+            form_paths,
+            strict=True,
+        ):
+            check_form_parity(path, max_candidate_teams=max_candidate_teams)
 
         quality_timings: list[Timings] = []
         for payload, payload_path in zip(quality_payloads, quality_paths, strict=True):
@@ -306,28 +350,34 @@ def main() -> None:
                 payload_json,
                 mode=Mode.COMPAT,
                 preset=WeightPreset.LIVE_COMPAT,
-                iterations=200,
+                iterations=1000,
             )
             gleam_ms = benchmark_gleam(
                 'quality',
                 payload_path,
-                iterations=200,
+                iterations=1000,
             )
             quality_timings.append(Timings(python_ms=python_ms, gleam_ms=gleam_ms))
 
         form_timings: list[Timings] = []
-        for payload, payload_path in zip(form_payloads, form_paths, strict=True):
+        for (payload, max_candidate_teams), payload_path in zip(
+            form_payloads,
+            form_paths,
+            strict=True,
+        ):
             payload_json = json.dumps(payload, separators=(',', ':'))
             python_ms = benchmark_python_form(
                 payload_json,
                 mode=Mode.COMPAT,
                 preset=WeightPreset.LIVE_COMPAT,
                 iterations=40,
+                max_candidate_teams=max_candidate_teams,
             )
             gleam_ms = benchmark_gleam(
                 'form',
                 payload_path,
                 iterations=40,
+                max_candidate_teams=max_candidate_teams,
             )
             form_timings.append(Timings(python_ms=python_ms, gleam_ms=gleam_ms))
 

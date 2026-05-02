@@ -14,12 +14,12 @@ import {
 
 function usage() {
   process.stderr.write(
-    'Usage: bench_inproc.mjs <quality|form> <payload.json> <iterations> [mode] [preset|none]\n',
+    'Usage: bench_inproc.mjs <quality|form> <payload.json> <iterations> [mode] [preset|none] [max_candidate_teams|none]\n',
   )
   process.exit(2)
 }
 
-const [command, payloadPath, iterationsRaw, modeRaw, presetRaw] = process.argv.slice(2)
+const [command, payloadPath, iterationsRaw, modeRaw, presetRaw, maxCandidateTeamsRaw] = process.argv.slice(2)
 if (!command || !payloadPath || !iterationsRaw) {
   usage()
 }
@@ -54,6 +54,17 @@ const presetValue =
               process.exit(2)
             })()
 const none = new None()
+const maxCandidateTeamsValue =
+  !maxCandidateTeamsRaw || maxCandidateTeamsRaw === 'none'
+    ? none
+    : (() => {
+        const parsed = Number.parseInt(maxCandidateTeamsRaw, 10)
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+          process.stderr.write('max_candidate_teams must be a positive integer or none\n')
+          process.exit(2)
+        }
+        return new Some(parsed)
+      })()
 const payload = readFileSync(payloadPath, 'utf8')
 
 function runOne() {
@@ -61,7 +72,7 @@ function runOne() {
     return quality_from_json_with_mode_preset(payload, mode, presetValue, false)
   }
   if (command === 'form') {
-    return form_from_json_with_mode_preset(payload, mode, presetValue, false, none)
+    return form_from_json_with_mode_preset(payload, mode, presetValue, false, maxCandidateTeamsValue)
   }
   usage()
 }

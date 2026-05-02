@@ -19,7 +19,14 @@ ROOT = Path(__file__).resolve().parents[1]
 GLEAM_CLI = ROOT / 'gleam' / 'scripts' / 'cli.mjs'
 
 
-def run_gleam(command: str, payload: dict, *, mode: str, preset: str | None) -> dict:
+def run_gleam(
+    command: str,
+    payload: dict,
+    *,
+    mode: str,
+    preset: str | None,
+    max_candidate_teams: int | None = None,
+) -> dict:
     with tempfile.NamedTemporaryFile('w', suffix='.json', delete=False) as handle:
         json.dump(payload, handle)
         path = Path(handle.name)
@@ -28,6 +35,8 @@ def run_gleam(command: str, payload: dict, *, mode: str, preset: str | None) -> 
         args = ['node', str(GLEAM_CLI), command, str(path), '--mode', mode]
         if preset is not None:
             args.extend(['--preset', preset])
+        if max_candidate_teams is not None:
+            args.extend(['--max-candidate-teams', str(max_candidate_teams)])
         output = subprocess.check_output(args, cwd=ROOT, text=True)
         return json.loads(output)
     finally:
@@ -62,25 +71,92 @@ def compare_quality_examples() -> None:
 
 def compare_formation_example() -> None:
     payload = json.loads((ROOT / 'examples' / 'team-formation.json').read_text())
+    compare_formation_payload('example formation', payload)
 
+
+def make_form_payload(people_count: int, tasks_count: int) -> dict:
+    if people_count % tasks_count != 0:
+        raise ValueError('people_count must be divisible by tasks_count')
+
+    team_size = people_count // tasks_count
+    people = []
+    tasks = []
+
+    for i in range(people_count):
+        people.append(
+            {
+                'id': f'p{i}',
+                'personality': {
+                    'ei': 0.1 if i % 2 == 0 else -0.1,
+                    'sn': 0.0,
+                    'tf': 0.0,
+                    'pj': 0.0,
+                },
+                'skills': [
+                    {'id': f's{i}', 'level': 1.0},
+                    {'id': f's{(i + 1) % people_count}', 'level': 0.3},
+                ],
+                'preferences': [
+                    {'personId': f'p{i}', 'preference': 1.0},
+                ],
+            }
+        )
+
+    for task_index in range(tasks_count):
+        start = task_index * team_size
+        task_people = list(range(start, start + team_size))
+        tasks.append(
+            {
+                'id': f't{task_index}',
+                'teamSize': team_size,
+                'skills': [
+                    {'id': f's{idx}', 'level': 1.0, 'importance': 1}
+                    for idx in task_people
+                ],
+                'preferences': [
+                    {'personId': f'p{idx}', 'preference': 1.0}
+                    for idx in task_people
+                ],
+            }
+        )
+
+    return {
+        'people': people,
+        'tasks': tasks,
+        'alpha': 0.3,
+        'beta': 0.3,
+        'gamma': 0.2,
+        'delta': 0.2,
+        'initRandom': False,
+    }
+
+
+def compare_formation_payload(
+    label: str,
+    payload: dict,
+    *,
+    max_candidate_teams: int | None = None,
+) -> None:
     request = FormationRequest.model_validate(payload)
     python_result = form_teams(
         request,
         mode=Mode.COMPAT,
         preset=WeightPreset.LIVE_COMPAT,
+        max_candidate_teams=max_candidate_teams,
     )
     gleam_result = run_gleam(
         'form',
         payload,
         mode='compat',
         preset='live_compat',
+        max_candidate_teams=max_candidate_teams,
     )
 
     python_by_task = {team.task_id: team for team in python_result.teams}
     gleam_by_task = {team['taskId']: team for team in gleam_result['teams']}
 
     if python_by_task.keys() != gleam_by_task.keys():
-        raise AssertionError('Task ids differ between Python and Gleam outputs')
+        raise AssertionError(f'{label}: task ids differ between Python and Gleam outputs')
 
     for task_id, python_team in python_by_task.items():
         gleam_team = gleam_by_task[task_id]
@@ -92,9 +168,23 @@ def compare_formation_example() -> None:
         }
         if python_people != gleam_people:
             raise AssertionError(
-                f'People assignments differ for task {task_id}: '
+                f'{label}: people assignments differ for task {task_id}: '
                 f'{python_people} != {gleam_people}'
             )
+
+
+def compare_formation_scenarios() -> None:
+    scenarios = [
+        ('10 people / 2 tasks', make_form_payload(10, 2), None),
+        ('9 people / 3 tasks', make_form_payload(9, 3), None),
+        ('larger capped workload', make_form_payload(12, 3), 10),
+    ]
+    for label, payload, max_candidate_teams in scenarios:
+        compare_formation_payload(
+            label,
+            payload,
+            max_candidate_teams=max_candidate_teams,
+        )
 
 
 def compare_overfull_compat_case() -> None:
@@ -140,6 +230,7 @@ def compare_overfull_compat_case() -> None:
 def main() -> None:
     compare_quality_examples()
     compare_formation_example()
+    compare_formation_scenarios()
     compare_overfull_compat_case()
     print('Gleam parity checks passed')
 

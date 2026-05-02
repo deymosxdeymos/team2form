@@ -1,7 +1,8 @@
+import gleam/dict
 import gleam/dynamic/decode
 import gleam/int
 import gleam/json
-import gleam/option.{None, Some}
+import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
 import team2form_gleam/formation_decode_fast
@@ -10,10 +11,7 @@ import team2form_gleam/quality_decode_fast
 import team2form_gleam/quality_encode_fast
 
 fn number_decoder() -> decode.Decoder(Float) {
-  decode.one_of(
-    decode.float,
-    or: [decode.map(decode.int, int.to_float)],
-  )
+  decode.one_of(decode.float, or: [decode.map(decode.int, int.to_float)])
 }
 
 fn bounded_float_decoder(
@@ -94,192 +92,296 @@ fn gender_decoder() -> decode.Decoder(models.Gender) {
 }
 
 fn personality_decoder() -> decode.Decoder(models.Personality) {
-  use ei <- decode.field("ei", bounded_float_decoder(-1.0, 1.0, "Personality.ei"))
-  use sn <- decode.field("sn", bounded_float_decoder(-1.0, 1.0, "Personality.sn"))
-  use tf <- decode.field("tf", bounded_float_decoder(-1.0, 1.0, "Personality.tf"))
-  use pj <- decode.field("pj", bounded_float_decoder(-1.0, 1.0, "Personality.pj"))
+  use ei <- decode.field(
+    "ei",
+    bounded_float_decoder(-1.0, 1.0, "Personality.ei"),
+  )
+  use sn <- decode.field(
+    "sn",
+    bounded_float_decoder(-1.0, 1.0, "Personality.sn"),
+  )
+  use tf <- decode.field(
+    "tf",
+    bounded_float_decoder(-1.0, 1.0, "Personality.tf"),
+  )
+  use pj <- decode.field(
+    "pj",
+    bounded_float_decoder(-1.0, 1.0, "Personality.pj"),
+  )
   decode.success(models.Personality(ei: ei, sn: sn, tf: tf, pj: pj))
 }
 
 fn person_skill_decoder() -> decode.Decoder(models.PersonSkill) {
   use id <- decode.field("id", non_empty_string_decoder("PersonSkill.id"))
-  use level <- decode.field("level", bounded_float_decoder(0.0, 1.0, "PersonSkill.level"))
+  use level <- decode.field(
+    "level",
+    bounded_float_decoder(0.0, 1.0, "PersonSkill.level"),
+  )
   decode.success(models.PersonSkill(id: id, level: level))
 }
 
 fn person_preference_decoder() -> decode.Decoder(models.PersonPreference) {
-  use person_id <- decode.field("personId", non_empty_string_decoder("PersonPreference.personId"))
-  use preference <-
-    decode.field(
-      "preference",
-      bounded_float_decoder(0.0, 1.0, "PersonPreference.preference"),
-    )
-  decode.success(models.PersonPreference(person_id: person_id, preference: preference))
+  use person_id <- decode.field(
+    "personId",
+    non_empty_string_decoder("PersonPreference.personId"),
+  )
+  use preference <- decode.field(
+    "preference",
+    bounded_float_decoder(0.0, 1.0, "PersonPreference.preference"),
+  )
+  decode.success(models.PersonPreference(
+    person_id: person_id,
+    preference: preference,
+  ))
 }
 
 fn person_decoder() -> decode.Decoder(models.Person) {
   use id <- decode.field("id", non_empty_string_decoder("Person.id"))
-  use gender <- decode.optional_field("gender", None, decode.optional(gender_decoder()))
-  use personality <- decode.field("personality", personality_decoder())
-  use skills <- decode.optional_field("skills", [], decode.list(of: person_skill_decoder()))
-  use preferences <-
-    decode.optional_field(
-      "preferences",
-      None,
-      decode.optional(decode.list(of: person_preference_decoder())),
-    )
-
-  decode.success(
-    models.Person(
-      id: id,
-      gender: gender,
-      personality: personality,
-      skills: skills,
-      preferences: preferences,
-    ),
+  use gender <- decode.optional_field(
+    "gender",
+    None,
+    decode.optional(gender_decoder()),
   )
+  use personality <- decode.field("personality", personality_decoder())
+  use skills <- decode.optional_field(
+    "skills",
+    [],
+    decode.list(of: person_skill_decoder()),
+  )
+  use preferences <- decode.optional_field(
+    "preferences",
+    None,
+    decode.optional(decode.list(of: person_preference_decoder())),
+  )
+
+  decode.success(models.Person(
+    id: id,
+    gender: gender,
+    personality: personality,
+    skills: skills,
+    preferences: preferences,
+  ))
 }
 
 fn task_skill_decoder() -> decode.Decoder(models.TaskSkill) {
   use id <- decode.field("id", non_empty_string_decoder("TaskSkill.id"))
-  use level <- decode.field("level", bounded_float_decoder(0.0, 1.0, "TaskSkill.level"))
-  use importance <- decode.field("importance", at_least_float_decoder(1.0, "TaskSkill.importance"))
+  use level <- decode.field(
+    "level",
+    bounded_float_decoder(0.0, 1.0, "TaskSkill.level"),
+  )
+  use importance <- decode.field(
+    "importance",
+    at_least_float_decoder(1.0, "TaskSkill.importance"),
+  )
   decode.success(models.TaskSkill(id: id, level: level, importance: importance))
 }
 
 fn task_preference_decoder() -> decode.Decoder(models.TaskPreference) {
-  use person_id <- decode.field("personId", non_empty_string_decoder("TaskPreference.personId"))
-  use preference <-
-    decode.field(
-      "preference",
-      bounded_float_decoder(0.0, 1.0, "TaskPreference.preference"),
-    )
-  decode.success(models.TaskPreference(person_id: person_id, preference: preference))
+  use person_id <- decode.field(
+    "personId",
+    non_empty_string_decoder("TaskPreference.personId"),
+  )
+  use preference <- decode.field(
+    "preference",
+    bounded_float_decoder(0.0, 1.0, "TaskPreference.preference"),
+  )
+  decode.success(models.TaskPreference(
+    person_id: person_id,
+    preference: preference,
+  ))
 }
 
 fn task_decoder() -> decode.Decoder(models.Task) {
   use id <- decode.field("id", non_empty_string_decoder("Task.id"))
-  use team_size <- decode.field("teamSize", positive_int_decoder(2, "Task.teamSize"))
-  use skills <- decode.field("skills", list_min_length_decoder(of: task_skill_decoder(), min_length: 1, expected: "Task.skills"))
-  use preferences <-
-    decode.optional_field(
-      "preferences",
-      None,
-      decode.optional(decode.list(of: task_preference_decoder())),
-    )
-
-  decode.success(
-    models.Task(
-      id: id,
-      team_size: team_size,
-      skills: skills,
-      preferences: preferences,
+  use team_size <- decode.field(
+    "teamSize",
+    positive_int_decoder(2, "Task.teamSize"),
+  )
+  use skills <- decode.field(
+    "skills",
+    list_min_length_decoder(
+      of: task_skill_decoder(),
+      min_length: 1,
+      expected: "Task.skills",
     ),
   )
+  use preferences <- decode.optional_field(
+    "preferences",
+    None,
+    decode.optional(decode.list(of: task_preference_decoder())),
+  )
+
+  decode.success(models.Task(
+    id: id,
+    team_size: team_size,
+    skills: skills,
+    preferences: preferences,
+  ))
 }
 
 fn similarity_decoder() -> decode.Decoder(models.Similarity) {
-  use source_id <- decode.field("sourceId", non_empty_string_decoder("Similarity.sourceId"))
-  use target_id <- decode.field("targetId", non_empty_string_decoder("Similarity.targetId"))
-  use similarity <-
-    decode.field(
-      "similarity",
-      bounded_float_decoder(0.0, 1.0, "Similarity.similarity"),
-    )
-
-  decode.success(
-    models.Similarity(
-      source_id: source_id,
-      target_id: target_id,
-      similarity: similarity,
-    ),
+  use source_id <- decode.field(
+    "sourceId",
+    non_empty_string_decoder("Similarity.sourceId"),
   )
+  use target_id <- decode.field(
+    "targetId",
+    non_empty_string_decoder("Similarity.targetId"),
+  )
+  use similarity <- decode.field(
+    "similarity",
+    bounded_float_decoder(0.0, 1.0, "Similarity.similarity"),
+  )
+
+  decode.success(models.Similarity(
+    source_id: source_id,
+    target_id: target_id,
+    similarity: similarity,
+  ))
 }
 
 fn team_member_decoder() -> decode.Decoder(models.TeamMember) {
   use id <- decode.field("id", non_empty_string_decoder("TeamMember.id"))
-  use gender <- decode.optional_field("gender", None, decode.optional(gender_decoder()))
-  use personality <- decode.field("personality", personality_decoder())
-  use skills <- decode.optional_field("skills", [], decode.list(of: person_skill_decoder()))
-  use preferences <-
-    decode.optional_field(
-      "preferences",
-      None,
-      decode.optional(decode.list(of: person_preference_decoder())),
-    )
-  use task_preference <-
-    decode.optional_field(
-      "taskPreference",
-      None,
-      decode.optional(bounded_float_decoder(0.0, 1.0, "TeamMember.taskPreference")),
-    )
-
-  decode.success(
-    models.TeamMember(
-      id: id,
-      gender: gender,
-      personality: personality,
-      skills: skills,
-      preferences: preferences,
-      task_preference: task_preference,
-    ),
+  use gender <- decode.optional_field(
+    "gender",
+    None,
+    decode.optional(gender_decoder()),
   )
+  use personality <- decode.field("personality", personality_decoder())
+  use skills <- decode.optional_field(
+    "skills",
+    [],
+    decode.list(of: person_skill_decoder()),
+  )
+  use preferences <- decode.optional_field(
+    "preferences",
+    None,
+    decode.optional(decode.list(of: person_preference_decoder())),
+  )
+  use task_preference <- decode.optional_field(
+    "taskPreference",
+    None,
+    decode.optional(bounded_float_decoder(0.0, 1.0, "TeamMember.taskPreference")),
+  )
+
+  decode.success(models.TeamMember(
+    id: id,
+    gender: gender,
+    personality: personality,
+    skills: skills,
+    preferences: preferences,
+    task_preference: task_preference,
+  ))
 }
 
 fn formation_request_decoder() -> decode.Decoder(models.FormationRequest) {
-  use people <- decode.field("people", list_min_length_decoder(of: person_decoder(), min_length: 2, expected: "FormationRequest.people"))
-  use tasks <- decode.field("tasks", list_min_length_decoder(of: task_decoder(), min_length: 1, expected: "FormationRequest.tasks"))
-  use init_random <- decode.optional_field("initRandom", False, decode.bool)
-  use alpha <- decode.optional_field("alpha", None, decode.optional(bounded_float_decoder(0.0, 1.0, "FormationRequest.alpha")))
-  use beta <- decode.optional_field("beta", None, decode.optional(bounded_float_decoder(0.0, 1.0, "FormationRequest.beta")))
-  use gamma <- decode.optional_field("gamma", None, decode.optional(bounded_float_decoder(0.0, 1.0, "FormationRequest.gamma")))
-  use delta <- decode.optional_field("delta", None, decode.optional(bounded_float_decoder(0.0, 1.0, "FormationRequest.delta")))
-  use similarities <-
-    decode.optional_field(
-      "similarities",
-      None,
-      decode.optional(decode.list(of: similarity_decoder())),
-    )
-
-  decode.success(
-    models.FormationRequest(
-      people: people,
-      tasks: tasks,
-      init_random: init_random,
-      alpha: alpha,
-      beta: beta,
-      gamma: gamma,
-      delta: delta,
-      similarities: similarities,
+  use people <- decode.field(
+    "people",
+    list_min_length_decoder(
+      of: person_decoder(),
+      min_length: 2,
+      expected: "FormationRequest.people",
     ),
   )
+  use tasks <- decode.field(
+    "tasks",
+    list_min_length_decoder(
+      of: task_decoder(),
+      min_length: 1,
+      expected: "FormationRequest.tasks",
+    ),
+  )
+  use init_random <- decode.optional_field("initRandom", False, decode.bool)
+  use alpha <- decode.optional_field(
+    "alpha",
+    None,
+    decode.optional(bounded_float_decoder(0.0, 1.0, "FormationRequest.alpha")),
+  )
+  use beta <- decode.optional_field(
+    "beta",
+    None,
+    decode.optional(bounded_float_decoder(0.0, 1.0, "FormationRequest.beta")),
+  )
+  use gamma <- decode.optional_field(
+    "gamma",
+    None,
+    decode.optional(bounded_float_decoder(0.0, 1.0, "FormationRequest.gamma")),
+  )
+  use delta <- decode.optional_field(
+    "delta",
+    None,
+    decode.optional(bounded_float_decoder(0.0, 1.0, "FormationRequest.delta")),
+  )
+  use similarities <- decode.optional_field(
+    "similarities",
+    None,
+    decode.optional(decode.list(of: similarity_decoder())),
+  )
+
+  decode.success(models.FormationRequest(
+    people: people,
+    tasks: tasks,
+    init_random: init_random,
+    alpha: alpha,
+    beta: beta,
+    gamma: gamma,
+    delta: delta,
+    similarities: similarities,
+  ))
 }
 
 fn team_quality_request_decoder() -> decode.Decoder(models.TeamQualityRequest) {
-  use task_skills <- decode.field("taskSkills", list_min_length_decoder(of: task_skill_decoder(), min_length: 1, expected: "TeamQualityRequest.taskSkills"))
-  use team <- decode.field("team", list_min_length_decoder(of: team_member_decoder(), min_length: 2, expected: "TeamQualityRequest.team"))
-  use alpha <- decode.optional_field("alpha", None, decode.optional(bounded_float_decoder(0.0, 1.0, "TeamQualityRequest.alpha")))
-  use beta <- decode.optional_field("beta", None, decode.optional(bounded_float_decoder(0.0, 1.0, "TeamQualityRequest.beta")))
-  use gamma <- decode.optional_field("gamma", None, decode.optional(bounded_float_decoder(0.0, 1.0, "TeamQualityRequest.gamma")))
-  use delta <- decode.optional_field("delta", None, decode.optional(bounded_float_decoder(0.0, 1.0, "TeamQualityRequest.delta")))
-  use similarities <-
-    decode.optional_field(
-      "similarities",
-      None,
-      decode.optional(decode.list(of: similarity_decoder())),
-    )
-
-  decode.success(
-    models.TeamQualityRequest(
-      task_skills: task_skills,
-      team: team,
-      alpha: alpha,
-      beta: beta,
-      gamma: gamma,
-      delta: delta,
-      similarities: similarities,
+  use task_skills <- decode.field(
+    "taskSkills",
+    list_min_length_decoder(
+      of: task_skill_decoder(),
+      min_length: 1,
+      expected: "TeamQualityRequest.taskSkills",
     ),
   )
+  use team <- decode.field(
+    "team",
+    list_min_length_decoder(
+      of: team_member_decoder(),
+      min_length: 2,
+      expected: "TeamQualityRequest.team",
+    ),
+  )
+  use alpha <- decode.optional_field(
+    "alpha",
+    None,
+    decode.optional(bounded_float_decoder(0.0, 1.0, "TeamQualityRequest.alpha")),
+  )
+  use beta <- decode.optional_field(
+    "beta",
+    None,
+    decode.optional(bounded_float_decoder(0.0, 1.0, "TeamQualityRequest.beta")),
+  )
+  use gamma <- decode.optional_field(
+    "gamma",
+    None,
+    decode.optional(bounded_float_decoder(0.0, 1.0, "TeamQualityRequest.gamma")),
+  )
+  use delta <- decode.optional_field(
+    "delta",
+    None,
+    decode.optional(bounded_float_decoder(0.0, 1.0, "TeamQualityRequest.delta")),
+  )
+  use similarities <- decode.optional_field(
+    "similarities",
+    None,
+    decode.optional(decode.list(of: similarity_decoder())),
+  )
+
+  decode.success(models.TeamQualityRequest(
+    task_skills: task_skills,
+    team: team,
+    alpha: alpha,
+    beta: beta,
+    gamma: gamma,
+    delta: delta,
+    similarities: similarities,
+  ))
 }
 
 fn parse_json(source: String, decoder: decode.Decoder(a)) -> Result(a, String) {
@@ -289,33 +391,52 @@ fn parse_json(source: String, decoder: decode.Decoder(a)) -> Result(a, String) {
   }
 }
 
-pub fn decode_formation_request(source: String) -> Result(models.FormationRequest, String) {
+pub fn decode_formation_request(
+  source: String,
+) -> Result(models.FormationRequest, String) {
   case formation_decode_fast.decode_formation_request_fast(source) {
-    Some(request) -> Ok(request)
+    Some(request) -> validate_formation_request(request)
 
     None -> {
       use request <- result.try(parse_json(source, formation_request_decoder()))
-      case models.validate_formation_request(request) {
-        Ok(valid) -> Ok(valid)
-        Error(validation_error) ->
-          Error(models.validation_error_to_string(validation_error))
-      }
+      validate_formation_request(request)
     }
   }
 }
 
-pub fn decode_team_quality_request(source: String) -> Result(models.TeamQualityRequest, String) {
+pub fn decode_team_quality_request(
+  source: String,
+) -> Result(models.TeamQualityRequest, String) {
   case quality_decode_fast.decode_team_quality_request_fast(source) {
     Some(request) -> Ok(request)
 
     None -> {
-      use request <- result.try(parse_json(source, team_quality_request_decoder()))
-      case models.validate_team_quality_request(request) {
-        Ok(valid) -> Ok(valid)
-        Error(validation_error) ->
-          Error(models.validation_error_to_string(validation_error))
-      }
+      use request <- result.try(parse_json(
+        source,
+        team_quality_request_decoder(),
+      ))
+      validate_team_quality_request(request)
     }
+  }
+}
+
+fn validate_formation_request(
+  request: models.FormationRequest,
+) -> Result(models.FormationRequest, String) {
+  case models.validate_formation_request(request) {
+    Ok(valid) -> Ok(valid)
+    Error(validation_error) ->
+      Error(models.validation_error_to_string(validation_error))
+  }
+}
+
+fn validate_team_quality_request(
+  request: models.TeamQualityRequest,
+) -> Result(models.TeamQualityRequest, String) {
+  case models.validate_team_quality_request(request) {
+    Ok(valid) -> Ok(valid)
+    Error(validation_error) ->
+      Error(models.validation_error_to_string(validation_error))
   }
 }
 
@@ -324,7 +445,46 @@ fn encode_string_list(values: List(String)) -> json.Json {
 }
 
 pub fn encode_quality_breakdown(payload: models.QualityBreakdown) -> String {
-  quality_encode_fast.encode_quality_breakdown_fast(payload)
+  case known_quality_weights(payload.weights) {
+    Some(#(alpha, beta, gamma, delta)) ->
+      quality_encode_fast.encode_quality_breakdown_fast_with_weights(
+        payload.quality,
+        payload.skill_score,
+        payload.personality_score,
+        payload.task_preference_score,
+        payload.social_score,
+        alpha,
+        beta,
+        gamma,
+        delta,
+        payload.assignments,
+      )
+
+    None -> quality_encode_fast.encode_quality_breakdown_fast(payload)
+  }
+}
+
+fn known_quality_weights(
+  weights: dict.Dict(String, Float),
+) -> Option(#(Float, Float, Float, Float)) {
+  case dict.size(weights) == 4 {
+    False -> None
+
+    True ->
+      case
+        dict.get(weights, "alpha"),
+        dict.get(weights, "beta"),
+        dict.get(weights, "gamma"),
+        dict.get(weights, "delta")
+      {
+        Ok(alpha), Ok(beta), Ok(gamma), Ok(delta) ->
+          Some(#(alpha, beta, gamma, delta))
+        Error(Nil), _, _, _ -> None
+        _, Error(Nil), _, _ -> None
+        _, _, Error(Nil), _ -> None
+        _, _, _, Error(Nil) -> None
+      }
+  }
 }
 
 fn encode_assigned_person(person: models.AssignedPerson) -> json.Json {

@@ -37,3 +37,28 @@ export function encode_quality_breakdown_fast(payload) {
 
   return JSON.stringify(jsonObject)
 }
+
+export function encode_quality_breakdown_fast_with_weights(
+  quality,
+  skillScore,
+  personalityScore,
+  taskPreferenceScore,
+  socialScore,
+  alpha,
+  beta,
+  gamma,
+  delta,
+  assignments,
+) {
+  const jsonObject = {
+    quality,
+    skillScore,
+    personalityScore,
+    taskPreferenceScore,
+    socialScore,
+    weights: { alpha, beta, gamma, delta },
+    assignments: dictAssignmentsToObject(assignments),
+  }
+
+  return JSON.stringify(jsonObject)
+}
