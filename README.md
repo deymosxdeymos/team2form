@@ -10,31 +10,28 @@ A local reimplementation of the Edu2Com team formation model. Scores teams, form
 
 ## Install
 ```bash
-cd gleam
 gleam build
 ```
 
 ## Test
 ```bash
-cd gleam
 gleam check
 gleam test
-node ../scripts/http_smoke_gleam.mjs
+node scripts/http_smoke_gleam.mjs
 ```
 
 ## CLI
 
 ```bash
 # score a team
-cd gleam
 gleam build
-node scripts/cli.mjs quality ../examples/team-quality.json --mode compat --preset live_compat
+node scripts/cli.mjs quality examples/team-quality.json --mode compat --preset live_compat
 
 # form teams
-node scripts/cli.mjs form ../examples/team-formation.json --mode compat --preset live_compat
+node scripts/cli.mjs form examples/team-formation.json --mode compat --preset live_compat
 
 # go fast (approximate) on large inputs
-node scripts/cli.mjs form ../examples/team-formation.json --max-candidate-teams 10000
+node scripts/cli.mjs form examples/team-formation.json --max-candidate-teams 10000
 ```
 
 ## Weight presets
@@ -48,7 +45,6 @@ node scripts/cli.mjs form ../examples/team-formation.json --max-candidate-teams 
 ## API
 
 ```bash
-cd gleam
 gleam build
 node scripts/server.mjs
 # → http://127.0.0.1:8000
@@ -63,7 +59,3 @@ node scripts/server.mjs
 The Node API caps candidate search at `10000` by default so you don't accidentally melt your laptop. Set `TEAM2FORM_MAX_CANDIDATE_TEAMS=none` if you really mean it.
 
 Server defaults are configured with environment variables: `TEAM2FORM_HOST`, `TEAM2FORM_PORT`, `TEAM2FORM_MODE`, `TEAM2FORM_PRESET`, `TEAM2FORM_NORMALIZE_WEIGHTS`, and `TEAM2FORM_MAX_CANDIDATE_TEAMS`.
-
-## Notes
-- No background webhook flow yet (the schema is ready, the plumbing isn't).
-- Symmetric inputs can still be nondeterministic on the upstream Edu2Com service itself — that's their problem, not ours.

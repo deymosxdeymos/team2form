@@ -10,30 +10,30 @@ tests, parity scripts, and rollback hooks were removed.
 Build before deploy:
 
 ```bash
-cd gleam
 gleam build
 ```
 
 Production command:
 
 ```bash
-node gleam/scripts/server.mjs
+node scripts/server.mjs
 ```
 
 CLI commands:
 
 ```bash
-node gleam/scripts/cli.mjs quality examples/team-quality.json --mode compat --preset
+node scripts/cli.mjs quality examples/team-quality.json --mode compat --preset
 live_compat
-node gleam/scripts/cli.mjs form examples/team-formation.json --mode compat --preset
+node scripts/cli.mjs form examples/team-formation.json --mode compat --preset
 live_compat
 ```
 
 ## Verification
 
 ```bash
-cd gleam && gleam check && gleam test
-node ../scripts/http_smoke_gleam.mjs
+gleam check
+gleam test
+node scripts/http_smoke_gleam.mjs
 ```
 
 The HTTP smoke test starts the Node server, checks `/v1/help`,

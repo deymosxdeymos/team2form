@@ -5,7 +5,7 @@ import { createServer } from "node:net"
 import { setTimeout as delay } from "node:timers/promises"
 
 const ROOT = new URL("../", import.meta.url)
-const SERVER = new URL("../gleam/scripts/server.mjs", import.meta.url)
+const SERVER = new URL("./server.mjs", import.meta.url)
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)

@@ -1,8 +1,7 @@
 # Build artifacts
 build/
-gleam/build/
-gleam/priv/
-gleam/*.log
+priv/
+*.log
 
 # Editors / OS
 .DS_Store
