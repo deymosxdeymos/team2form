@@ -50,3 +50,14 @@ node scripts/server.mjs
 # POST http://127.0.0.1:8000/v1/teamQuality
 # POST http://127.0.0.1:8000/v1/teamFormation
 ```
+
+The server reads defaults from `TEAM2FORM_HOST`, `TEAM2FORM_PORT`, `TEAM2FORM_MODE`,
+`TEAM2FORM_PRESET`, `TEAM2FORM_NORMALIZE_WEIGHTS`, and
+`TEAM2FORM_MAX_CANDIDATE_TEAMS`. Formation is capped at `10000` candidate teams
+unless `TEAM2FORM_MAX_CANDIDATE_TEAMS=none` is set.
+
+## HTTP smoke check
+
+```bash
+uv run python ../scripts/http_smoke_gleam.py
+```

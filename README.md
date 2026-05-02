@@ -6,7 +6,7 @@ A local reimplementation of the Edu2Com team formation model. Scores teams, form
 - `compat` — mirrors the live Edu2Com endpoint
 - `paper` — closer to the published scoring ideas
 
-**Stack:** `uv` · `pydantic` · `fastapi` · `uvicorn` · `ruff` · `ty` · `pytest`
+**Stack:** `gleam` · `node` · `uv` · `pydantic` · `ruff` · `ty` · `pytest`
 
 ## Install
 ```bash
@@ -24,13 +24,15 @@ uv run ty check
 
 ```bash
 # score a team
-uv run team2form quality examples/team-quality.json --mode compat --preset live_compat
+cd gleam
+gleam build
+node scripts/cli.mjs quality ../examples/team-quality.json --mode compat --preset live_compat
 
 # form teams
-uv run team2form form examples/team-formation.json --mode compat --preset live_compat
+node scripts/cli.mjs form ../examples/team-formation.json --mode compat --preset live_compat
 
 # go fast (approximate) on large inputs
-uv run team2form form examples/team-formation.json --max-candidate-teams 10000
+node scripts/cli.mjs form ../examples/team-formation.json --max-candidate-teams 10000
 ```
 
 ## Python
@@ -67,7 +69,9 @@ teams = form_teams(
 ## API
 
 ```bash
-uv run team2form-api
+cd gleam
+gleam build
+node scripts/server.mjs
 # → http://127.0.0.1:8000
 ```
 
@@ -77,7 +81,15 @@ uv run team2form-api
 | `POST` | `/v1/teamQuality` |
 | `POST` | `/v1/teamFormation` |
 
-The API caps candidate search at `10000` by default so you don't accidentally melt your laptop. Override with `create_app(max_candidate_teams=None)` if you really mean it.
+The Node API caps candidate search at `10000` by default so you don't accidentally melt your laptop. Set `TEAM2FORM_MAX_CANDIDATE_TEAMS=none` if you really mean it.
+
+Server defaults are configured with environment variables: `TEAM2FORM_HOST`, `TEAM2FORM_PORT`, `TEAM2FORM_MODE`, `TEAM2FORM_PRESET`, `TEAM2FORM_NORMALIZE_WEIGHTS`, and `TEAM2FORM_MAX_CANDIDATE_TEAMS`.
+
+The Python FastAPI command remains available only as a short-term rollback/reference path:
+
+```bash
+uv run team2form-api
+```
 
 ## Notes
 - No background webhook flow yet (the schema is ready, the plumbing isn't).
