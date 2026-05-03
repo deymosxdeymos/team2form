@@ -125,3 +125,160 @@ pub fn capped_form_reconsiders_unused_people_test() {
   assert string.contains(does: output, contain: "{\"id\":\"e\"")
   assert string.contains(does: output, contain: "{\"id\":\"a\"")
 }
+
+pub fn quality_rejects_duplicate_team_member_ids_test() {
+  let payload =
+    "{\"taskSkills\":[{\"id\":\"s1\",\"level\":1.0,\"importance\":1}],\"team\":[{\"id\":\"dup\",\"personality\":{\"ei\":0,\"sn\":0,\"tf\":0,\"pj\":0},\"skills\":[]},{\"id\":\"dup\",\"personality\":{\"ei\":0,\"sn\":0,\"tf\":0,\"pj\":0},\"skills\":[]}]}"
+
+  let result = team2form_gleam.quality_from_json(payload, "compat", None, False)
+
+  let error = case result {
+    Ok(output) ->
+      panic as { "Expected duplicate team member validation error, got Ok: " <> output }
+    Error(reason) -> reason
+  }
+
+  assert string.contains(does: error, contain: "team member ids must be unique")
+}
+
+pub fn quality_rejects_unknown_team_preference_ids_test() {
+  let payload =
+    "{\"taskSkills\":[{\"id\":\"s1\",\"level\":1.0,\"importance\":1}],\"team\":[{\"id\":\"a\",\"personality\":{\"ei\":0,\"sn\":0,\"tf\":0,\"pj\":0},\"skills\":[],\"preferences\":[{\"personId\":\"missing\",\"preference\":0.5}]},{\"id\":\"b\",\"personality\":{\"ei\":0,\"sn\":0,\"tf\":0,\"pj\":0},\"skills\":[]}]}"
+
+  let result = team2form_gleam.quality_from_json(payload, "compat", None, False)
+
+  let error = case result {
+    Ok(output) ->
+      panic as { "Expected unknown preference validation error, got Ok: " <> output }
+    Error(reason) -> reason
+  }
+
+  assert string.contains(does: error, contain: "unknown people ids for a: missing")
+}
+
+pub fn form_rejects_unknown_task_preference_ids_test() {
+  let payload =
+    "{\"people\":[{\"id\":\"a\",\"personality\":{\"ei\":0,\"sn\":0,\"tf\":0,\"pj\":0},\"skills\":[]},{\"id\":\"b\",\"personality\":{\"ei\":0,\"sn\":0,\"tf\":0,\"pj\":0},\"skills\":[]}],\"tasks\":[{\"id\":\"t1\",\"teamSize\":2,\"skills\":[{\"id\":\"s1\",\"level\":1.0,\"importance\":1}],\"preferences\":[{\"personId\":\"ghost\",\"preference\":1.0}]}],\"initRandom\":false}"
+
+  let result = team2form_gleam.form_from_json(payload, "compat", None, False, None)
+
+  let error = case result {
+    Ok(output) ->
+      panic as { "Expected unknown task preference validation error, got Ok: " <> output }
+    Error(reason) -> reason
+  }
+
+  assert string.contains(does: error, contain: "task preferences reference unknown people ids for t1: ghost")
+}
+
+pub fn paper_similarity_contributes_to_skill_score_test() {
+  let payload =
+    "{\"taskSkills\":[{\"id\":\"python\",\"level\":1.0,\"importance\":1},{\"id\":\"docs\",\"level\":1.0,\"importance\":1}],\"team\":[{\"id\":\"a\",\"personality\":{\"ei\":0,\"sn\":0,\"tf\":0,\"pj\":0},\"skills\":[{\"id\":\"javascript\",\"level\":0.8}]},{\"id\":\"b\",\"personality\":{\"ei\":0,\"sn\":0,\"tf\":0,\"pj\":0},\"skills\":[{\"id\":\"docs\",\"level\":1.0}]}],\"similarities\":[{\"sourceId\":\"javascript\",\"targetId\":\"python\",\"similarity\":0.5}],\"alpha\":1.0,\"beta\":0.0,\"gamma\":0.0,\"delta\":0.0}"
+
+  let result = team2form_gleam.quality_from_json(payload, "paper", None, False)
+
+  let output = case result {
+    Ok(json) -> json
+    Error(reason) ->
+      panic as { "Expected paper similarity quality output, got Error: " <> reason }
+  }
+
+  assert string.contains(does: output, contain: "\"skillScore\":0.632455")
+  assert string.contains(does: output, contain: "\"a\":[\"python\"]")
+  assert string.contains(does: output, contain: "\"b\":[\"docs\"]")
+}
+
+pub fn form_rejects_duplicate_task_ids_test() {
+  let payload =
+    "{\"people\":[{\"id\":\"a\",\"personality\":{\"ei\":0,\"sn\":0,\"tf\":0,\"pj\":0},\"skills\":[]},{\"id\":\"b\",\"personality\":{\"ei\":0,\"sn\":0,\"tf\":0,\"pj\":0},\"skills\":[]},{\"id\":\"c\",\"personality\":{\"ei\":0,\"sn\":0,\"tf\":0,\"pj\":0},\"skills\":[]},{\"id\":\"d\",\"personality\":{\"ei\":0,\"sn\":0,\"tf\":0,\"pj\":0},\"skills\":[]}],\"tasks\":[{\"id\":\"dup\",\"teamSize\":2,\"skills\":[{\"id\":\"s1\",\"level\":1.0,\"importance\":1}]},{\"id\":\"dup\",\"teamSize\":2,\"skills\":[{\"id\":\"s2\",\"level\":1.0,\"importance\":1}]}],\"initRandom\":false}"
+
+  let result = team2form_gleam.form_from_json(payload, "compat", None, False, None)
+
+  let error = case result {
+    Ok(output) ->
+      panic as { "Expected duplicate task validation error, got Ok: " <> output }
+    Error(reason) -> reason
+  }
+
+  assert string.contains(does: error, contain: "task ids must be unique: dup")
+}
+
+pub fn quality_rejects_duplicate_preference_ids_test() {
+  let payload =
+    "{\"taskSkills\":[{\"id\":\"s1\",\"level\":1.0,\"importance\":1}],\"team\":[{\"id\":\"a\",\"personality\":{\"ei\":0,\"sn\":0,\"tf\":0,\"pj\":0},\"skills\":[],\"preferences\":[{\"personId\":\"b\",\"preference\":0.5},{\"personId\":\"b\",\"preference\":0.75}]},{\"id\":\"b\",\"personality\":{\"ei\":0,\"sn\":0,\"tf\":0,\"pj\":0},\"skills\":[]}]}"
+
+  let result = team2form_gleam.quality_from_json(payload, "compat", None, False)
+
+  let error = case result {
+    Ok(output) ->
+      panic as { "Expected duplicate preference validation error, got Ok: " <> output }
+    Error(reason) -> reason
+  }
+
+  assert string.contains(does: error, contain: "person preferences must not contain duplicate personIds for a: b")
+}
+
+pub fn form_rejects_duplicate_task_preference_ids_test() {
+  let payload =
+    "{\"people\":[{\"id\":\"a\",\"personality\":{\"ei\":0,\"sn\":0,\"tf\":0,\"pj\":0},\"skills\":[]},{\"id\":\"b\",\"personality\":{\"ei\":0,\"sn\":0,\"tf\":0,\"pj\":0},\"skills\":[]}],\"tasks\":[{\"id\":\"t1\",\"teamSize\":2,\"skills\":[{\"id\":\"s1\",\"level\":1.0,\"importance\":1}],\"preferences\":[{\"personId\":\"a\",\"preference\":0.5},{\"personId\":\"a\",\"preference\":1.0}]}],\"initRandom\":false}"
+
+  let result = team2form_gleam.form_from_json(payload, "compat", None, False, None)
+
+  let error = case result {
+    Ok(output) ->
+      panic as { "Expected duplicate task preference validation error, got Ok: " <> output }
+    Error(reason) -> reason
+  }
+
+  assert string.contains(does: error, contain: "task preferences must not contain duplicate personIds for t1: a")
+}
+
+pub fn form_rejects_non_positive_candidate_cap_test() {
+  let payload =
+    "{\"people\":[{\"id\":\"a\",\"personality\":{\"ei\":0,\"sn\":0,\"tf\":0,\"pj\":0},\"skills\":[]},{\"id\":\"b\",\"personality\":{\"ei\":0,\"sn\":0,\"tf\":0,\"pj\":0},\"skills\":[]}],\"tasks\":[{\"id\":\"t1\",\"teamSize\":2,\"skills\":[{\"id\":\"s1\",\"level\":1.0,\"importance\":1}]}],\"initRandom\":false}"
+
+  let result = team2form_gleam.form_from_json(payload, "compat", None, False, Some(0))
+
+  let error = case result {
+    Ok(output) ->
+      panic as { "Expected candidate cap validation error, got Ok: " <> output }
+    Error(reason) -> reason
+  }
+
+  assert string.contains(does: error, contain: "max_candidate_teams must be a positive integer")
+}
+
+pub fn form_rejects_insufficient_headcount_test() {
+  let payload =
+    "{\"people\":[{\"id\":\"a\",\"personality\":{\"ei\":0,\"sn\":0,\"tf\":0,\"pj\":0},\"skills\":[]},{\"id\":\"b\",\"personality\":{\"ei\":0,\"sn\":0,\"tf\":0,\"pj\":0},\"skills\":[]}],\"tasks\":[{\"id\":\"t1\",\"teamSize\":2,\"skills\":[{\"id\":\"s1\",\"level\":1.0,\"importance\":1}]},{\"id\":\"t2\",\"teamSize\":2,\"skills\":[{\"id\":\"s2\",\"level\":1.0,\"importance\":1}]}],\"initRandom\":false}"
+
+  let result = team2form_gleam.form_from_json(payload, "compat", None, False, None)
+
+  let error = case result {
+    Ok(output) ->
+      panic as { "Expected insufficient headcount error, got Ok: " <> output }
+    Error(reason) -> reason
+  }
+
+  assert string.contains(does: error, contain: "insufficient headcount")
+}
+
+pub fn quality_accepts_integer_numbers_like_float_numbers_test() {
+  let integer_payload =
+    "{\"taskSkills\":[{\"id\":\"s1\",\"level\":1,\"importance\":1}],\"team\":[{\"id\":\"a\",\"personality\":{\"ei\":0,\"sn\":0,\"tf\":0,\"pj\":0},\"skills\":[{\"id\":\"s1\",\"level\":1}]},{\"id\":\"b\",\"personality\":{\"ei\":0,\"sn\":0,\"tf\":0,\"pj\":0},\"skills\":[]}],\"alpha\":1,\"beta\":0,\"gamma\":0,\"delta\":0}"
+  let float_payload =
+    "{\"taskSkills\":[{\"id\":\"s1\",\"level\":1.0,\"importance\":1.0}],\"team\":[{\"id\":\"a\",\"personality\":{\"ei\":0.0,\"sn\":0.0,\"tf\":0.0,\"pj\":0.0},\"skills\":[{\"id\":\"s1\",\"level\":1.0}]},{\"id\":\"b\",\"personality\":{\"ei\":0.0,\"sn\":0.0,\"tf\":0.0,\"pj\":0.0},\"skills\":[]}],\"alpha\":1.0,\"beta\":0.0,\"gamma\":0.0,\"delta\":0.0}"
+
+  let integer_output = case team2form_gleam.quality_from_json(integer_payload, "compat", None, False) {
+    Ok(json) -> json
+    Error(reason) ->
+      panic as { "Expected integer payload to decode, got Error: " <> reason }
+  }
+  let float_output = case team2form_gleam.quality_from_json(float_payload, "compat", None, False) {
+    Ok(json) -> json
+    Error(reason) ->
+      panic as { "Expected float payload to decode, got Error: " <> reason }
+  }
+
+  assert integer_output == float_output
+}

@@ -408,7 +408,7 @@ pub fn decode_team_quality_request(
   source: String,
 ) -> Result(models.TeamQualityRequest, String) {
   case quality_decode_fast.decode_team_quality_request_fast(source) {
-    Some(request) -> Ok(request)
+    Some(request) -> validate_team_quality_request(request)
 
     None -> {
       use request <- result.try(parse_json(
