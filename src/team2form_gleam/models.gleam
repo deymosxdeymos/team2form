@@ -97,8 +97,22 @@ pub type TeamResult {
   TeamResult(task_id: String, people: List(AssignedPerson), quality: Float)
 }
 
+pub type FormationSearchMode {
+  Interactive
+  Deep
+  Unbounded
+}
+
+pub type FormationSearchMetadata {
+  FormationSearchMetadata(
+    mode: FormationSearchMode,
+    exact: Bool,
+    max_candidate_teams: Option(Int),
+  )
+}
+
 pub type TeamsResponse {
-  TeamsResponse(teams: List(TeamResult))
+  TeamsResponse(teams: List(TeamResult), search: FormationSearchMetadata)
 }
 
 pub type QualityBreakdown {

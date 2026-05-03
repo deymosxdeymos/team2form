@@ -1,12 +1,12 @@
 # team2form 🧩
 
-A local reimplementation of the Edu2Com team formation model. Scores teams, forms them, and doesn't phone home.
+A local team formation model. Scores teams, forms them, and doesn't phone home.
 
 **Two modes:**
-- `compat` — mirrors the live Edu2Com endpoint
+- `compat` — compatibility-oriented scoring
 - `paper` — closer to the published scoring ideas
 
-**Stack:** `gleam` · `node`
+**Stack:** `gleam` on Erlang/BEAM
 
 ## Install
 ```bash
@@ -14,24 +14,14 @@ gleam build
 ```
 
 ## Test
-```bash
-gleam check
-gleam test
-node scripts/http_smoke_gleam.mjs
-```
 
-## CLI
+The project targets Erlang by default. `gleam_json` requires OTP 27+, so on Fedora systems with OTP 26 use the containerized check:
 
 ```bash
-# score a team
-gleam build
-node scripts/cli.mjs quality examples/team-quality.json --mode compat --preset live_compat
-
-# form teams
-node scripts/cli.mjs form examples/team-formation.json --mode compat --preset live_compat
-
-# go fast (approximate) on large inputs
-node scripts/cli.mjs form examples/team-formation.json --max-candidate-teams 10000
+docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+  -v "$PWD":/app:Z -w /app \
+  ghcr.io/gleam-lang/gleam:nightly-erlang \
+  sh -lc 'gleam check && gleam test'
 ```
 
 ## Weight presets
@@ -44,11 +34,25 @@ node scripts/cli.mjs form examples/team-formation.json --max-candidate-teams 100
 
 ## API
 
+Run from the Gleam container without building an image:
+
 ```bash
-gleam build
-node scripts/server.mjs
-# → http://127.0.0.1:8000
+docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+  -e HOST=0.0.0.0 \
+  -p 127.0.0.1:8000:8000 \
+  -v "$PWD":/app:Z -w /app \
+  ghcr.io/gleam-lang/gleam:nightly-erlang \
+  sh -lc 'gleam run -m team2form_gleam/api'
 ```
+
+Or build the deployable API image:
+
+```bash
+docker build -t team2form-api .
+docker run --rm -e HOST=0.0.0.0 -p 127.0.0.1:8000:8000 team2form-api
+```
+
+The server listens on `HOST` and `PORT`. `HOST` defaults to `127.0.0.1` for local runs; set `HOST=0.0.0.0` only when you intentionally need network/container access. Docker examples set `HOST=0.0.0.0` for container reachability but publish only on host localhost. `PORT` defaults to `8000` and invalid values fail startup instead of falling back silently.
 
 | method | path |
 |---|---|
@@ -56,6 +60,27 @@ node scripts/server.mjs
 | `POST` | `/v1/teamQuality` |
 | `POST` | `/v1/teamFormation` |
 
-The Node API caps candidate search at `10000` by default so you don't accidentally melt your laptop. Set `TEAM2FORM_MAX_CANDIDATE_TEAMS=none` if you really mean it.
+```bash
+curl -sS http://127.0.0.1:8000/v1/help
+curl -sS -X POST http://127.0.0.1:8000/v1/teamQuality \
+  --data-binary @examples/team-quality.json \
+  -H 'content-type: application/json'
+curl -sS -X POST http://127.0.0.1:8000/v1/teamFormation \
+  --data-binary @examples/team-formation.json \
+  -H 'content-type: application/json'
+```
 
-Server defaults are configured with environment variables: `TEAM2FORM_HOST`, `TEAM2FORM_PORT`, `TEAM2FORM_MODE`, `TEAM2FORM_PRESET`, `TEAM2FORM_NORMALIZE_WEIGHTS`, and `TEAM2FORM_MAX_CANDIDATE_TEAMS`.
+## Formation Search
+
+Formation responses include search metadata:
+
+```json
+{
+  "teams": [],
+  "search": {
+    "mode": "interactive",
+    "exact": false,
+    "maxCandidateTeams": 10000
+  }
+}
+```

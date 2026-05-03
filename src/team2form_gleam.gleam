@@ -3,6 +3,7 @@ import gleam/result
 import team2form_gleam/codec
 import team2form_gleam/formation
 import team2form_gleam/modes
+import team2form_gleam/models
 import team2form_gleam/scoring
 
 pub fn help_info() -> String {
@@ -54,20 +55,63 @@ pub fn form_from_json_with_mode_preset(
   normalize_weights: Bool,
   max_candidate_teams: Option(Int),
 ) -> Result(String, String) {
+  form_from_json_with_mode_preset_and_search(
+    input_json,
+    mode,
+    preset,
+    normalize_weights,
+    models.Unbounded,
+    max_candidate_teams,
+  )
+}
+
+pub fn form_from_json_with_mode_preset_and_search(
+  input_json: String,
+  mode: modes.Mode,
+  preset: Option(modes.WeightPreset),
+  normalize_weights: Bool,
+  search_mode: models.FormationSearchMode,
+  max_candidate_teams: Option(Int),
+) -> Result(String, String) {
   use request <- result.try(codec.decode_formation_request(input_json))
   use response <-
     result.try(
-      formation.form_teams(
+      formation.form_teams_with_search_mode(
         request,
         mode: mode,
         preset: preset,
         normalize_weights: normalize_weights,
+        search_mode: search_mode,
         max_candidate_teams: max_candidate_teams,
       )
       |> result.map_error(formation.team_formation_error_to_string),
     )
 
   Ok(codec.encode_teams_response(response))
+}
+
+pub fn form_from_json_with_mode_preset_and_search_name(
+  input_json: String,
+  mode: modes.Mode,
+  preset: Option(modes.WeightPreset),
+  normalize_weights: Bool,
+  search_mode_name: String,
+  max_candidate_teams: Option(Int),
+) -> Result(String, String) {
+  use search_mode <-
+    result.try(
+      formation.parse_search_mode(search_mode_name)
+      |> result.map_error(formation.team_formation_error_to_string),
+    )
+
+  form_from_json_with_mode_preset_and_search(
+    input_json,
+    mode,
+    preset,
+    normalize_weights,
+    search_mode,
+    max_candidate_teams,
+  )
 }
 
 pub fn form_from_json(
@@ -77,14 +121,38 @@ pub fn form_from_json(
   normalize_weights: Bool,
   max_candidate_teams: Option(Int),
 ) -> Result(String, String) {
+  form_from_json_with_search_mode(
+    input_json,
+    mode_name,
+    preset_name,
+    normalize_weights,
+    "unbounded",
+    max_candidate_teams,
+  )
+}
+
+pub fn form_from_json_with_search_mode(
+  input_json: String,
+  mode_name: String,
+  preset_name: Option(String),
+  normalize_weights: Bool,
+  search_mode_name: String,
+  max_candidate_teams: Option(Int),
+) -> Result(String, String) {
   use mode <- result.try(modes.mode_from_string(mode_name))
   use preset <- result.try(parse_preset(preset_name))
+  use search_mode <-
+    result.try(
+      formation.parse_search_mode(search_mode_name)
+      |> result.map_error(formation.team_formation_error_to_string),
+    )
 
-  form_from_json_with_mode_preset(
+  form_from_json_with_mode_preset_and_search(
     input_json,
     mode,
     preset,
     normalize_weights,
+    search_mode,
     max_candidate_teams,
   )
 }

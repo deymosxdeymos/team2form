@@ -173,7 +173,7 @@ pub fn form_rejects_unknown_task_preference_ids_test() {
 
 pub fn paper_similarity_contributes_to_skill_score_test() {
   let payload =
-    "{\"taskSkills\":[{\"id\":\"python\",\"level\":1.0,\"importance\":1},{\"id\":\"docs\",\"level\":1.0,\"importance\":1}],\"team\":[{\"id\":\"a\",\"personality\":{\"ei\":0,\"sn\":0,\"tf\":0,\"pj\":0},\"skills\":[{\"id\":\"javascript\",\"level\":0.8}]},{\"id\":\"b\",\"personality\":{\"ei\":0,\"sn\":0,\"tf\":0,\"pj\":0},\"skills\":[{\"id\":\"docs\",\"level\":1.0}]}],\"similarities\":[{\"sourceId\":\"javascript\",\"targetId\":\"python\",\"similarity\":0.5}],\"alpha\":1.0,\"beta\":0.0,\"gamma\":0.0,\"delta\":0.0}"
+    "{\"taskSkills\":[{\"id\":\"python\",\"level\":1.0,\"importance\":1},{\"id\":\"docs\",\"level\":1.0,\"importance\":1}],\"team\":[{\"id\":\"a\",\"personality\":{\"ei\":0,\"sn\":0,\"tf\":0,\"pj\":0},\"skills\":[{\"id\":\"related_skill\",\"level\":0.8}]},{\"id\":\"b\",\"personality\":{\"ei\":0,\"sn\":0,\"tf\":0,\"pj\":0},\"skills\":[{\"id\":\"docs\",\"level\":1.0}]}],\"similarities\":[{\"sourceId\":\"related_skill\",\"targetId\":\"python\",\"similarity\":0.5}],\"alpha\":1.0,\"beta\":0.0,\"gamma\":0.0,\"delta\":0.0}"
 
   let result = team2form_gleam.quality_from_json(payload, "paper", None, False)
 

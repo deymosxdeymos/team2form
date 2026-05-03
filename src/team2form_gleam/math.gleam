@@ -1,5 +1,5 @@
-@external(javascript, "./math_ffi.mjs", "sin")
+@external(erlang, "math", "sin")
 pub fn sin(value: Float) -> Float
 
-@external(javascript, "./math_ffi.mjs", "sqrt")
+@external(erlang, "math", "sqrt")
 pub fn sqrt(value: Float) -> Float

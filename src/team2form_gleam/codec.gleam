@@ -2,13 +2,11 @@ import gleam/dict
 import gleam/dynamic/decode
 import gleam/int
 import gleam/json
+import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
-import team2form_gleam/formation_decode_fast
 import team2form_gleam/models
-import team2form_gleam/quality_decode_fast
-import team2form_gleam/quality_encode_fast
 
 fn number_decoder() -> decode.Decoder(Float) {
   decode.one_of(decode.float, or: [decode.map(decode.int, int.to_float)])
@@ -394,30 +392,15 @@ fn parse_json(source: String, decoder: decode.Decoder(a)) -> Result(a, String) {
 pub fn decode_formation_request(
   source: String,
 ) -> Result(models.FormationRequest, String) {
-  case formation_decode_fast.decode_formation_request_fast(source) {
-    Some(request) -> validate_formation_request(request)
-
-    None -> {
-      use request <- result.try(parse_json(source, formation_request_decoder()))
-      validate_formation_request(request)
-    }
-  }
+  use request <- result.try(parse_json(source, formation_request_decoder()))
+  validate_formation_request(request)
 }
 
 pub fn decode_team_quality_request(
   source: String,
 ) -> Result(models.TeamQualityRequest, String) {
-  case quality_decode_fast.decode_team_quality_request_fast(source) {
-    Some(request) -> validate_team_quality_request(request)
-
-    None -> {
-      use request <- result.try(parse_json(
-        source,
-        team_quality_request_decoder(),
-      ))
-      validate_team_quality_request(request)
-    }
-  }
+  use request <- result.try(parse_json(source, team_quality_request_decoder()))
+  validate_team_quality_request(request)
 }
 
 fn validate_formation_request(
@@ -445,46 +428,38 @@ fn encode_string_list(values: List(String)) -> json.Json {
 }
 
 pub fn encode_quality_breakdown(payload: models.QualityBreakdown) -> String {
-  case known_quality_weights(payload.weights) {
-    Some(#(alpha, beta, gamma, delta)) ->
-      quality_encode_fast.encode_quality_breakdown_fast_with_weights(
-        payload.quality,
-        payload.skill_score,
-        payload.personality_score,
-        payload.task_preference_score,
-        payload.social_score,
-        alpha,
-        beta,
-        gamma,
-        delta,
-        payload.assignments,
-      )
-
-    None -> quality_encode_fast.encode_quality_breakdown_fast(payload)
-  }
+  json.object([
+    #("quality", json.float(payload.quality)),
+    #("skillScore", json.float(payload.skill_score)),
+    #("personalityScore", json.float(payload.personality_score)),
+    #("taskPreferenceScore", json.float(payload.task_preference_score)),
+    #("socialScore", json.float(payload.social_score)),
+    #("weights", encode_float_dict(payload.weights)),
+    #("assignments", encode_assignments(payload.assignments)),
+  ])
+  |> json.to_string
 }
 
-fn known_quality_weights(
-  weights: dict.Dict(String, Float),
-) -> Option(#(Float, Float, Float, Float)) {
-  case dict.size(weights) == 4 {
-    False -> None
+fn encode_float_dict(values: dict.Dict(String, Float)) -> json.Json {
+  values
+  |> dict.to_list
+  |> list.map(fn(entry) {
+    let #(key, value) = entry
+    #(key, json.float(value))
+  })
+  |> json.object
+}
 
-    True ->
-      case
-        dict.get(weights, "alpha"),
-        dict.get(weights, "beta"),
-        dict.get(weights, "gamma"),
-        dict.get(weights, "delta")
-      {
-        Ok(alpha), Ok(beta), Ok(gamma), Ok(delta) ->
-          Some(#(alpha, beta, gamma, delta))
-        Error(Nil), _, _, _ -> None
-        _, Error(Nil), _, _ -> None
-        _, _, Error(Nil), _ -> None
-        _, _, _, Error(Nil) -> None
-      }
-  }
+fn encode_assignments(
+  assignments: dict.Dict(String, List(String)),
+) -> json.Json {
+  assignments
+  |> dict.to_list
+  |> list.map(fn(entry) {
+    let #(key, value) = entry
+    #(key, encode_string_list(value))
+  })
+  |> json.object
 }
 
 fn encode_assigned_person(person: models.AssignedPerson) -> json.Json {
@@ -502,16 +477,42 @@ fn encode_team_result(team: models.TeamResult) -> json.Json {
   ])
 }
 
+fn encode_optional_int(value: Option(Int)) -> json.Json {
+  case value {
+    Some(int) -> json.int(int)
+    None -> json.null()
+  }
+}
+
+fn encode_search_mode(mode: models.FormationSearchMode) -> json.Json {
+  case mode {
+    models.Interactive -> json.string("interactive")
+    models.Deep -> json.string("deep")
+    models.Unbounded -> json.string("unbounded")
+  }
+}
+
+fn encode_formation_search_metadata(
+  search: models.FormationSearchMetadata,
+) -> json.Json {
+  json.object([
+    #("mode", encode_search_mode(search.mode)),
+    #("exact", json.bool(search.exact)),
+    #("maxCandidateTeams", encode_optional_int(search.max_candidate_teams)),
+  ])
+}
+
 pub fn encode_teams_response(payload: models.TeamsResponse) -> String {
   json.object([
     #("teams", json.array(from: payload.teams, of: encode_team_result)),
+    #("search", encode_formation_search_metadata(payload.search)),
   ])
   |> json.to_string
 }
 
 pub fn encode_help_info() -> String {
   json.object([
-    #("name", json.string("Edu2com")),
+    #("name", json.string("Team2Form")),
     #("version", json.string("0.1.0")),
   ])
   |> json.to_string

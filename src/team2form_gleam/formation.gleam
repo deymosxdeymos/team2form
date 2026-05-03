@@ -8,8 +8,9 @@ import gleam/result
 import gleam/set
 import gleam/string
 import team2form_gleam/models.{
-  type FormationRequest, type Person, type TeamResult, type TeamsResponse,
-  TeamResult, TeamsResponse,
+  type FormationRequest, type FormationSearchMode, type Person,
+  type TeamResult, type TeamsResponse, Deep, FormationSearchMetadata,
+  Interactive, TeamResult, TeamsResponse, Unbounded,
 }
 import team2form_gleam/modes.{type Mode, type WeightPreset, Compat}
 import team2form_gleam/scoring
@@ -20,6 +21,8 @@ pub type TeamFormationError {
 }
 
 pub const default_max_candidate_teams = 10_000
+
+pub const deep_max_candidate_teams = 100_000
 
 const shortlist_padding = 6
 
@@ -103,7 +106,59 @@ pub fn form_teams(
   normalize_weights normalize_weights: Bool,
   max_candidate_teams max_candidate_teams: Option(Int),
 ) -> Result(TeamsResponse, TeamFormationError) {
+  form_teams_with_search_mode(
+    request,
+    mode: mode,
+    preset: preset,
+    normalize_weights: normalize_weights,
+    search_mode: Unbounded,
+    max_candidate_teams: max_candidate_teams,
+  )
+}
+
+pub fn default_max_candidate_teams_for_search_mode(
+  search_mode: FormationSearchMode,
+) -> Option(Int) {
+  case search_mode {
+    Interactive -> Some(default_max_candidate_teams)
+    Deep -> Some(deep_max_candidate_teams)
+    Unbounded -> None
+  }
+}
+
+pub fn parse_search_mode(
+  value: String,
+) -> Result(FormationSearchMode, TeamFormationError) {
+  case value {
+    "interactive" -> Ok(Interactive)
+    "deep" -> Ok(Deep)
+    "unbounded" -> Ok(Unbounded)
+    _ -> Error(TeamFormationError("Unknown search mode: " <> value))
+  }
+}
+
+pub fn search_mode_to_string(search_mode: FormationSearchMode) -> String {
+  case search_mode {
+    Interactive -> "interactive"
+    Deep -> "deep"
+    Unbounded -> "unbounded"
+  }
+}
+
+pub fn form_teams_with_search_mode(
+  request: FormationRequest,
+  mode mode: Mode,
+  preset preset: Option(WeightPreset),
+  normalize_weights normalize_weights: Bool,
+  search_mode search_mode: FormationSearchMode,
+  max_candidate_teams max_candidate_teams: Option(Int),
+) -> Result(TeamsResponse, TeamFormationError) {
   use Nil <- result.try(validate_max_candidate_teams(max_candidate_teams))
+
+  let effective_max_candidate_teams = case max_candidate_teams {
+    Some(_) -> max_candidate_teams
+    None -> default_max_candidate_teams_for_search_mode(search_mode)
+  }
 
   let requested_seats =
     list.fold(request.tasks, 0, fn(total, task) { total + task.team_size })
@@ -121,11 +176,11 @@ pub fn form_teams(
           mode: mode,
           preset: preset,
           normalize_weights: normalize_weights,
-          max_candidate_teams: max_candidate_teams,
+          max_candidate_teams: effective_max_candidate_teams,
         )
-      let search_outcome = case
+      let search_is_exact =
         capped_candidate_search_is_exact(request, context.max_candidate_teams)
-      {
+      let search_outcome = case search_is_exact {
         True -> {
           let #(outcome, _memo, _score_cache) =
             explore_tasks(
@@ -197,6 +252,11 @@ pub fn form_teams(
                   dict_get_int(context.task_order, right.task_id, 0),
                 )
               }),
+              search: FormationSearchMetadata(
+                mode: search_mode,
+                exact: search_is_exact,
+                max_candidate_teams: context.max_candidate_teams,
+              ),
             ),
           )
 
