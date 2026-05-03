@@ -8,6 +8,7 @@ COPY src ./src
 RUN gleam deps download
 RUN gleam build
 
+ENV HOST=0.0.0.0
 ENV PORT=8000
 EXPOSE 8000
 
