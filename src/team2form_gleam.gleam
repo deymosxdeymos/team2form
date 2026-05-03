@@ -1,10 +1,15 @@
 import gleam/option.{type Option, None, Some}
 import gleam/result
+import team2form_gleam/api
 import team2form_gleam/codec
 import team2form_gleam/formation
 import team2form_gleam/modes
 import team2form_gleam/models
 import team2form_gleam/scoring
+
+pub fn main() {
+  api.main()
+}
 
 pub fn help_info() -> String {
   codec.encode_help_info()
