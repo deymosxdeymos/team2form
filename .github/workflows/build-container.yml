@@ -1,0 +1,32 @@
+name: Build container image
+
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  IMAGE_ID: ghcr.io/deymosxdeymos/team2form
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build . --file Dockerfile --tag team2form-api
+
+      - name: Log in to registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Push image
+        run: |
+          VERSION_TAG="${GITHUB_REF_NAME}"
+          docker tag team2form-api "$IMAGE_ID:$VERSION_TAG"
+          docker tag team2form-api "$IMAGE_ID:production"
+          docker push "$IMAGE_ID:$VERSION_TAG"
+          docker push "$IMAGE_ID:production"
